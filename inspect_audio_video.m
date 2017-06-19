@@ -1,12 +1,10 @@
-function inspect_audio_video(bat_str,exp_date,base_dir,varargin)
-nlg_string = 'neurologger_recording';
-exp_dir = [base_dir 'bat' bat_str filesep nlg_string exp_date filesep];
+function inspect_audio_video(bat_str,exp_date,exp_dir,varargin)
+nVideo = 2;
 h = figure;
 nBehaviors = 8;
 
 allBehaviorList = {'Bite','Shiver','Survey','L2F','Climb','Claw','Voc','Flap',...
     'E','uFall','Sniff','Wrist','Spread','LG','Strike','M2B','nE'};
-
 
 hAudioTrace = axes('Units','Normalized','Position',[0.13 0.175 0.775 0.15]);
 hMovie = [axes('Units','Normalized','Position',[0.15 0.33 0.335 0.56]),...
@@ -28,19 +26,19 @@ setappdata(plotParams.hFig,'isPlayingVideo',0);
 setappdata(plotParams.hFig,'initialize',1);
 setappdata(plotParams.hFig,'playbackSpeed',2);
 
-video_files = cell(1,2);
-video_metadata_files = cell(1,2);
-video_dirs = cell(1,2);
+video_files = cell(1,nVideo);
+video_metadata_files = cell(1,nVideo);
+video_dirs = cell(1,nVideo);
 
-for v = 1:2
-    video_dirs{v} = [exp_dir 'video\Camera ' num2str(v) filesep];
+for v = 1:nVideo
+    video_dirs{v} = [uigetdir(exp_dir,sprintf('Choose folder for Camera %d',v)) filesep];
     video_files{v} = dir([video_dirs{v} '*.mp4']);
     video_files{v} = {video_files{v}.name};
     video_metadata_files{v} = dir([video_dirs{v} '*.ts.csv']);
     video_metadata_files{v} = {video_metadata_files{v}.name};
 end
 
-audio_dir = [exp_dir 'audio\ch2\'];
+audio_dir = [uigetdir(exp_dir,'Choose folder containing audio files') filesep];
 audio_files = dir([audio_dir '*.wav']);
 audio_files = {audio_files.name};
 
@@ -65,15 +63,17 @@ if isempty(varargin)
            end
         end
         display(['loading existing file ' juv_call_info_fname]);
+        fileNums.audio = find(~cellfun(@isempty,{juv_call_info.VideoFile}),1,'first');
+        fileNums.video = find(strcmp(juv_call_info(fileNums.audio).VideoFile{1},video_files{1}));
     catch
         display(['couldn''t find ' juv_call_info_fname]);
     end
 else
     s = varargin{1};
     audio_files = {s.AudioFile};
-    video_files = cell(1,2);
+    video_files = cell(1,nVideo);
     for k = 1:length(s)
-        for v = 1:2
+        for v = 1:nVideo
             video_files{v}{k} = s(k).VideoFile{v};
         end
     end
@@ -234,14 +234,16 @@ audio_file_numbers = strsplit(num2str(1:length(audio_files)));
 
 uicontrol(plotParams.hFig,'unit','normalized','style','popupmenu','string',...
     cellfun(@(x,y) [x ' ' y],audio_file_numbers,audio_files,'UniformOutput',0),...
-    'position',[0.02,0.4,0.1,0.05],'tag','loadNextAudioFile','callback', ...
+    'position',[0.02,0.4,0.1,0.05],'tag','loadNextAudioFile',...
+    'value',fileNums.audio,'callback',...
     {@nextVideoCallback,playParams,plotParams,audio_dir,video_dirs,audio_files,video_files,fileNums,allBehaviorList});
 
 video_file_numbers = strsplit(num2str(1:length(video_files{1})));
 
 uicontrol(plotParams.hFig,'unit','normalized','style','popupmenu','string',...
     cellfun(@(x,y) [x ' ' y],video_file_numbers,video_files{1},'UniformOutput',0),...
-    'position',[0.02,0.35,0.1,0.05],'tag','loadNextVideoFile','callback', ...
+    'position',[0.02,0.35,0.1,0.05],'tag','loadNextVideoFile',...
+    'value',fileNums.video,'callback',...
     {@nextVideoCallback,playParams,plotParams,audio_dir,video_dirs,audio_files,video_files,fileNums,allBehaviorList});
 
 uicontrol(plotParams.hFig,'unit','normalized','style','text','String','',...
