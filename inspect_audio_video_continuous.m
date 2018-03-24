@@ -1,4 +1,20 @@
-function inspect_audio_video_continuous(bat_str,exp_date,exp_dir,exp_type,varargin)
+function inspect_audio_video_continuous(exp_dir,exp_type,bat_str,exp_date,varargin)
+if nargin<1
+    exp_dir=input('Give the path to the folder containing the data:\n', 's');
+end
+if nargin<2
+    exp_type=input('Indicate your experiment type (piezo or nlg):\n', 's');
+end
+if nargin<3
+    fprintf('No bat name provided, ''Shannon'' will be used as a default name\n');
+    bat_str = 'Shannon';
+end
+if nargin<4
+    fprintf('No date was given for the experiment, the date of today will be used: %s\n', date);
+    exp_date = date;
+end
+
+
 nVideo = 2;
 h = figure;
 call_k = 1;
@@ -10,7 +26,7 @@ hCalls = axes('Units','Normalized','Position',[0.2 0.075 0.65 0.075]);
 
 params = struct('audio_fs',250e3,'video_fs',[],'nFrames',[],'nVideo',2,...
     'hAudioTrace',hAudioTrace,'hMovie',hMovie,'hFig',h,'hCalls',hCalls,...
-    'bat_str',bat_str,'exp_date',exp_date,'exp_type',exp_type);
+    'bat_str',bat_str,'exp_date',exp_date,'exp_type',exp_type,'exp_dir',exp_dir);
 
 setappdata(params.hFig,'currentFrame',1);
 setappdata(params.hFig,'startAudio',0);
@@ -26,19 +42,19 @@ video_metadata_files = cell(1,nVideo);
 video_dirs = cell(1,nVideo);
 frame_ts_info = cell(1,nVideo);
 for v = 1:nVideo
-    video_dirs{v} = [exp_dir 'video\Camera ' num2str(v) filesep];
+    video_dirs{v} = fullfile(exp_dir, 'video', ['Camera ' num2str(v)]);
     video_files{v} = dir([video_dirs{v} '*.mp4']);
     video_files{v} = {video_files{v}.name};
     video_metadata_files{v} = dir([video_dirs{v} '*.ts.csv']);
     video_metadata_files{v} = {video_metadata_files{v}.name};
-    s = load([video_dirs{v} 'frame_timestamps_info.mat']);
+    s = load(fullfile(video_dirs{v} ,'frame_timestamps_info.mat'));
     frame_ts_info{v} = s.frame_ts_info;
 end
 
 
 if isempty(varargin)
-    audio_dir = [exp_dir 'audio\ch1' filesep];
-    s = load([audio_dir 'cut_call_data.mat']);
+    audio_dir = fullfile(exp_dir, 'audio', 'ch1');
+    s = load(fullfile(audio_dir, 'cut_call_data.mat'));
     event_pos_data = s.cut_call_data;
     event_pos_data = event_pos_data(~[event_pos_data.noise]);
     [event_pos_data.corrected_eventpos] = event_pos_data.corrected_callpos;
@@ -65,7 +81,7 @@ plot(params.hCalls,mean(eventpos(:,call_k)),1.1,'vk','MarkerFaceColor','k','Tag'
 switch exp_type
     
     case 'piezo'
-        call_info_fname = [audio_dir 'call_info_' params.bat_str '_' params.exp_date '.mat'];
+        call_info_fname = fullfile(audio_dir, ['call_info_' params.bat_str '_' params.exp_date '.mat']);
         nBehaviors = 1;
         call_info = struct('eventpos',num2cell(vertcat(event_pos_data.file_event_pos),2),...
             'corrected_eventpos',num2cell(vertcat(event_pos_data.corrected_eventpos),2),...
@@ -77,7 +93,7 @@ switch exp_type
         allBehaviorList = {'Still','Bite','Shiver','Survey','L2F','Climb','Claw','Voc','Flap',...
             'E','Sniff','Spread','Strike','M2B','nE'};
         nBehaviors = 2;
-        call_info_fname = [audio_dir 'juv_call_info_' params.bat_str '_' params.exp_date '.mat'];
+        call_info_fname = fullfile(audio_dir, ['juv_call_info_' params.bat_str '_' params.exp_date '.mat']);
         call_info = struct('eventpos',num2cell(vertcat(event_pos_data.file_event_pos),2),...
             'corrected_eventpos',num2cell(vertcat(event_pos_data.corrected_eventpos),2),...
             'juvCall',[],'echoCall',[],'behaviors',repmat({cell(1,nBehaviors)},length(event_pos_data),1));
@@ -180,7 +196,14 @@ try
     videoData = cell(1,nVideo);
     for v = 1:nVideo
         [~,first_call_frame_idx(v)] = min(abs(frame_ts_info{v}.(['timestamps_' params.exp_type])-call_time));
-        vidObj{v} = VideoReader(frame_ts_info{v}.videoFNames{frame_ts_info{v}.fileIdx(first_call_frame_idx(v))});
+        Path2Video =frame_ts_info{v}.videoFNames{frame_ts_info{v}.fileIdx(first_call_frame_idx(v))};
+        % Make sure the video path is correct
+        [~,Folder]=fileparts(params.exp_dir);
+        Path2Video_new = fullfile(params.exp_dir, Path2Video((strfind(Path2Video, Folder) + length(Folder)+1):end));
+        if isunix
+            Path2Video_new = strrep(Path2Video_new, '\', '/');
+        end
+        vidObj{v} = VideoReader(Path2Video_new);
         video_fs(v) = vidObj{v}.FrameRate;
         frame_offset = round(video_fs(v)*callOffset);
         vidObj{v}.CurrentTime = frame_ts_info{v}.file_frame_number(first_call_frame_idx(v) - frame_offset)/video_fs(v);
@@ -197,13 +220,23 @@ try
     end
     params.video_fs = mean(video_fs);
     params.nFrames = min(cellfun(@(x) size(x,3),videoData));
-    audio_dir = fileparts(event_pos_data(call_k).fName);
-    audio_files = dir([audio_dir filesep 'T*.WAV']);
+    if isunix
+        Path2Audio_temp = fileparts(strrep(event_pos_data(call_k).fName, '\','/'));
+        Path2Audio = fullfile(params.exp_dir, Path2Audio_temp((strfind(Path2Audio_temp, Folder) + length(Folder)+1):end));
+    else
+        Path2Audio = fileparts(event_pos_data(call_k).fName);
+    end
+    audio_files = dir([Path2Audio filesep 'T*.WAV']);
     wav_file_nums = cellfun(@(x) str2double(x(end-7:end-4)),{audio_files.name});
     
     audio_offset = round(callOffset*params.audio_fs);
     requested_audio_samples = -audio_offset + event_pos_data(call_k).file_event_pos(1):event_pos_data(call_k).file_event_pos(1) + audio_offset;
-    base_audio_data = audioread(event_pos_data(call_k).fName);
+    if isunix
+        [~, File_local, ext] = fileparts(strrep(event_pos_data(call_k).fName, '\', '/'));
+    else
+        [~, File_local, ext] = fileparts(event_pos_data(call_k).fName);
+    end
+    base_audio_data = audioread(fullfile(Path2Audio, [File_local ext]));
     
     f_num = event_pos_data(call_k).f_num;
     while any(requested_audio_samples <= 0)
