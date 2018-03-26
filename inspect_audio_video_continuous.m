@@ -198,11 +198,18 @@ try
         [~,first_call_frame_idx(v)] = min(abs(frame_ts_info{v}.(['timestamps_' params.exp_type])-call_time));
         Path2Video =frame_ts_info{v}.videoFNames{frame_ts_info{v}.fileIdx(first_call_frame_idx(v))};
         % Make sure the video path is correct
-        Folder = fileparts(params.exp_dir);
-        Path2Video_new = fullfile(params.exp_dir, Path2Video((strfind(Path2Video, Folder) + length(Folder)+1):end));
         if isunix
-            Path2Video_new = strrep(Path2Video_new, '\', '/');
+            Path2Video = strrep(Path2Video, '\', '/');
         end
+        % find the date of the experiment
+        SepIndices = strfind(params.exp_dir, filesep);
+        if SepIndices(end)==length(params.exp_dir)
+            FolderDate = params.exp_dir(SepIndices(end-1)+1:end-1);
+        else
+            FolderDate = params.exp_dir(SepIndices(end)+1:end);
+        end
+        Path2Video_new = fullfile(params.exp_dir, Path2Video((strfind(Path2Video, FolderDate) + length(FolderDate)):end));
+        
         vidObj{v} = VideoReader(Path2Video_new);
         video_fs(v) = vidObj{v}.FrameRate;
         frame_offset = round(video_fs(v)*callOffset);
