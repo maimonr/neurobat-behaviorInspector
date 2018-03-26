@@ -198,7 +198,7 @@ try
         [~,first_call_frame_idx(v)] = min(abs(frame_ts_info{v}.(['timestamps_' params.exp_type])-call_time));
         Path2Video =frame_ts_info{v}.videoFNames{frame_ts_info{v}.fileIdx(first_call_frame_idx(v))};
         % Make sure the video path is correct
-        [~,Folder]=fileparts(params.exp_dir);
+        Folder = fileparts(params.exp_dir);
         Path2Video_new = fullfile(params.exp_dir, Path2Video((strfind(Path2Video, Folder) + length(Folder)+1):end));
         if isunix
             Path2Video_new = strrep(Path2Video_new, '\', '/');
