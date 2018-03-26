@@ -229,7 +229,7 @@ try
     params.nFrames = min(cellfun(@(x) size(x,3),videoData));
     if isunix
         Path2Audio_temp = fileparts(strrep(event_pos_data(call_k).fName, '\','/'));
-        Path2Audio = fullfile(params.exp_dir, Path2Audio_temp((strfind(Path2Audio_temp, Folder) + length(Folder)+1):end));
+        Path2Audio = fullfile(params.exp_dir, Path2Audio_temp((strfind(Path2Audio_temp, FolderDate) + length(FolderDate)+1):end));
     else
         Path2Audio = fileparts(event_pos_data(call_k).fName);
     end
