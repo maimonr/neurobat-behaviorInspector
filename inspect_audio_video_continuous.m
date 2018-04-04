@@ -51,9 +51,9 @@ for v = 1:nVideo
     frame_ts_info{v} = s.frame_ts_info;
 end
 
+audio_dir = fullfile(exp_dir, 'audio', 'ch1');
 
-if isempty(varargin)
-    audio_dir = fullfile(exp_dir, 'audio', 'ch1');
+if isempty(varargin)    
     s = load(fullfile(audio_dir, 'cut_call_data.mat'));
     event_pos_data = s.cut_call_data;
     event_pos_data = event_pos_data(~[event_pos_data.noise]);
@@ -61,8 +61,12 @@ if isempty(varargin)
     [event_pos_data.file_event_pos] = event_pos_data.callpos;
     
 else
-    nlg_times = varargin{1};
-    event_pos_data = get_event_pos_data(exp_dir,nlg_times); % still needs writing!!
+    event_pos_data = varargin{1};
+    event_pos_data = event_pos_data(~[event_pos_data.noise]);
+    [event_pos_data.corrected_eventpos] = event_pos_data.corrected_callpos;
+    [event_pos_data.file_event_pos] = event_pos_data.callpos;
+%     nlg_times = varargin{1};
+%     event_pos_data = get_event_pos_data(exp_dir,nlg_times); % still needs writing!!
     
 end
 eventpos = 1e-3*vertcat(event_pos_data.corrected_eventpos)'/60; % call position in minutes
@@ -218,10 +222,9 @@ try
         nFrames = ceil((endTime - vidObj{v}.CurrentTime)*video_fs(v));
         videoData{v} = zeros(vidObj{v}.Height,vidObj{v}.Width,nFrames,'uint8');
         k = 1;
-        
         while vidObj{v}.CurrentTime <= frame_ts_info{v}.file_frame_number(first_call_frame_idx(v) + frame_offset)/video_fs(v)
             temp = readFrame(vidObj{v});
-            videoData{v}(:,:,k) = temp(:,:,1);
+            videoData{v}(:,:,k) = adapthisteq(temp(:,:,1));
             k = k + 1;
         end
     end
@@ -639,7 +642,7 @@ end
 
 function loadDataCallback(~,~,params,audio_dir)
 
-call_info_fname = [audio_dir 'juv_call_info_' params.bat_str '_' params.exp_date '.mat'];
+call_info_fname = fullfile(audio_dir, ['call_info_' params.bat_str '_' params.exp_date '.mat']);
 
 try
     load(call_info_fname);
@@ -656,7 +659,7 @@ end
 
 function saveDataCallback(~,~,params,audio_dir)
 
-call_info_fname = [audio_dir 'call_info_' params.bat_str '_' params.exp_date '.mat'];
+call_info_fname = fullfile(audio_dir, ['call_info_' params.bat_str '_' params.exp_date '.mat']);
 if exist(call_info_fname,'file')
     display(['updating existing file ' call_info_fname]);
     choice = questdlg('Overwrite existing juvenile call file?','Overwrite?','Yes','No','Update','No');
