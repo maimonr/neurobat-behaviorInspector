@@ -250,7 +250,11 @@ try
     
     f_num = event_pos_data(call_k).f_num;
     while any(requested_audio_samples <= 0)
-        f_num = f_num - 1;
+        if f_num > 1
+            f_num = f_num - 1;
+        else
+            requested_audio_samples(requested_audio_samples<=0) = 1;            
+        end
         audio_file_idx = wav_file_nums == f_num;
         pad_audio_data = audioread([audio_files(audio_file_idx).folder filesep audio_files(audio_file_idx).name]);
         nSamples = length(pad_audio_data);
@@ -645,12 +649,19 @@ function loadDataCallback(~,~,params,audio_dir)
 call_info_fname = fullfile(audio_dir, ['call_info_' params.bat_str '_' params.exp_date '.mat']);
 
 try
-    load(call_info_fname);
+    load(call_info_fname,'call_info');
     display(['loading existing file ' call_info_fname]);
     guidata(params.hFig,call_info);
     
 catch
     display(['couldn''t find' call_info_fname]);
+    try
+        [call_info_fname, folder] = uigetfile('E:\ephys\juvenile_recording\bat13681\neurologger_recording20171230_2\audio\ch1\*.mat');
+        load([folder call_info_fname],'call_info')
+        guidata(params.hFig,call_info);
+    catch
+        display(['couldn''t find' call_info_fname]);
+    end
 end
 
 
