@@ -236,7 +236,8 @@ try
     else
         Path2Audio = fileparts(event_pos_data(call_k).fName);
     end
-    audio_files = dir([Path2Audio filesep 'T*.WAV']);
+    Path2Audio_new = fullfile(params.exp_dir, Path2Audio((strfind(Path2Audio, FolderDate) + length(FolderDate)):end));
+    audio_files = dir([Path2Audio_new filesep 'T*.WAV']);
     wav_file_nums = cellfun(@(x) str2double(x(end-7:end-4)),{audio_files.name});
     
     audio_offset = round(callOffset*params.audio_fs);
@@ -246,7 +247,7 @@ try
     else
         [~, File_local, ext] = fileparts(event_pos_data(call_k).fName);
     end
-    base_audio_data = audioread(fullfile(Path2Audio, [File_local ext]));
+    base_audio_data = audioread(fullfile(Path2Audio_new, [File_local ext]));
     
     f_num = event_pos_data(call_k).f_num;
     while any(requested_audio_samples <= 0)
