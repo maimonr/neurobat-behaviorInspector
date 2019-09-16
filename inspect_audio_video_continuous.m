@@ -1,19 +1,8 @@
-function inspect_audio_video_continuous(exp_dir,exp_type,bat_str,exp_date,varargin)
-if nargin<1
-    exp_dir=input('Give the path to the folder containing the data:\n', 's');
-end
-if nargin<2
-    exp_type=input('Indicate your experiment type (piezo or nlg):\n', 's');
-end
-if nargin<3
-    fprintf('No bat name provided, ''Shannon'' will be used as a default name\n');
-    bat_str = 'Shannon';
-end
-if nargin<4
-    fprintf('No date was given for the experiment, the date of today will be used: %s\n', date);
-    exp_date = date;
-end
+function inspect_audio_video_continuous(exp_dir,varargin)
 
+pnames = {'exp_type','bat_str','exp_date','event_pos_data','onlyBouts'};
+dflts  = {'adult','bat',date,[],false};
+[exp_type,bat_str,exp_date,event_pos_data,only_bout_flag] = internal.stats.parseArgs(pnames,dflts,varargin{:});
 
 nVideo = 2;
 h = figure;
@@ -24,7 +13,7 @@ hMovie = [axes('Units','Normalized','Position',[0.15 0.33 0.335 0.56]),...
     axes('Units','Normalized','Position',[0.575 0.33 0.335 0.56])];
 hCalls = axes('Units','Normalized','Position',[0.2 0.075 0.65 0.075]);
 
-params = struct('audio_fs',250e3,'video_fs',[],'nFrames',[],'nVideo',2,...
+params = struct('audio_fs',250e3,'video_fs',[],'nFrames',[],'nVideo',nVideo,...
     'hAudioTrace',hAudioTrace,'hMovie',hMovie,'hFig',h,'hCalls',hCalls,...
     'bat_str',bat_str,'exp_date',exp_date,'exp_type',exp_type,'exp_dir',exp_dir,...
     'eventpos',[],'timestamps_string',[]);
@@ -43,27 +32,46 @@ video_metadata_files = cell(1,nVideo);
 video_dirs = cell(1,nVideo);
 frame_ts_info = cell(1,nVideo);
 for v = 1:nVideo
-    video_dirs{v} = fullfile(exp_dir, 'video', ['Camera ' num2str(v)]);
-    video_files{v} = dir([video_dirs{v} '*.mp4']);
+    
+    video_dirs{v} = fullfile(exp_dir, 'video');
+    video_files{v} = dir(fullfile(video_dirs{v},'**',['Camera ' num2str(v) '*.mp4']));
     video_files{v} = {video_files{v}.name};
-    video_metadata_files{v} = dir([video_dirs{v} '*.ts.csv']);
+    video_metadata_files{v} = dir(fullfile(video_dirs{v},'**',['Camera ' num2str(v) '*.ts.csv']));
     video_metadata_files{v} = {video_metadata_files{v}.name};
-    s = load(fullfile(video_dirs{v} ,'frame_timestamps_info.mat'));
+    frame_ts_fname = dir(fullfile(video_dirs{v},'**','*frame_timestamps_info.mat'));
+    frame_ts_fname = frame_ts_fname(contains({frame_ts_fname.name},'camera','IgnoreCase',false) & contains({frame_ts_fname.name},num2str(v)));
+    assert(length(frame_ts_fname) == 1);
+    s = load(fullfile(frame_ts_fname.folder,frame_ts_fname.name));
     frame_ts_info{v} = s.frame_ts_info;
 end
 
-audio_dir = fullfile(exp_dir, 'audio', 'ch1');
+audio_dir = fullfile(exp_dir, 'audio', 'communication', 'ch1');
 
-if isempty(varargin)    
+if isempty(event_pos_data)    
+    bat_num_classification_fname = fullfile(audio_dir,'manual_al_classify_batNum.mat');
     s = load(fullfile(audio_dir, 'cut_call_data.mat'));
     event_pos_data = s.cut_call_data;
-    event_pos_data = event_pos_data(~[event_pos_data.noise]);
+    
+    if ~any(isnan([event_pos_data.noise]))
+        event_pos_data = event_pos_data(~[event_pos_data.noise]);
+    elseif exist(bat_num_classification_fname,'file')
+        s = load(bat_num_classification_fname);
+        batNums = s.manual_al_classify_batNum;
+        if length(batNums) == length(event_pos_data)
+            batIdx = ~strcmp(batNums,'noise');
+            event_pos_data = event_pos_data(batIdx);
+        end
+    end
+
     [event_pos_data.corrected_eventpos] = event_pos_data.corrected_callpos;
     [event_pos_data.file_event_pos] = event_pos_data.callpos;
     
 else
-    event_pos_data = varargin{1};
-    event_pos_data = event_pos_data(~[event_pos_data.noise]);
+
+    if ~any(isnan([event_pos_data.noise]))
+        event_pos_data = event_pos_data(~[event_pos_data.noise]);
+    end
+    
     if ~isfield(event_pos_data,'corrected_eventpos')
         [event_pos_data.corrected_eventpos] = event_pos_data.corrected_callpos;
     end
@@ -73,6 +81,14 @@ else
 %     nlg_times = varargin{1};
 %     event_pos_data = get_event_pos_data(exp_dir,nlg_times); % still needs writing!!
     
+end
+
+if only_bout_flag
+    bout_separation_length = 1e3;
+    callPos = vertcat(event_pos_data.corrected_eventpos);
+    ICI = [Inf; callPos(2:end,1) - callPos(1:end-1,2)];
+    callIdx = ICI > bout_separation_length;
+    event_pos_data = event_pos_data(callIdx);
 end
 
 switch exp_type
@@ -85,7 +101,7 @@ switch exp_type
             'juvCall',[],'echoCall',[],'behaviors',repmat({cell(1,nBehaviors)},length(event_pos_data),1));
         allBehaviorList = {'male','female','unclear'};
         
-        params.eventpos = 1e-3*vertcat(event_pos_data.corrected_eventpos)'/50; % call position in minutes
+        params.eventpos = 1e-3*vertcat(event_pos_data.corrected_eventpos)'/60; % call position in minutes
         params.timestamps_string = 'piezo';
         
     case 'nlg'
@@ -97,46 +113,31 @@ switch exp_type
             'corrected_eventpos',num2cell(vertcat(event_pos_data.corrected_eventpos),2),...
             'juvCall',[],'echoCall',[],'behaviors',repmat({cell(1,nBehaviors)},length(event_pos_data),1));
         
-        params.eventpos = 1e-3*vertcat(event_pos_data.corrected_eventpos)'/50; % call position in minutes
+        params.eventpos = 1e-3*vertcat(event_pos_data.corrected_eventpos)'/60; % call position in minutes
         params.timestamps_string = 'nlg';
         
     case 'nlg_activity'
         allBehaviorList = {'Resting','Tongue (Grooming)','Tongue (other)','Vocalization','Echo','Locomotion','Active hanging','Wing flap','nE'};
         nBehaviors = 3;
-        call_info_fname = fullfile(audio_dir, ['juv_call_info_' params.bat_str '_' params.exp_date '.mat']);
+        call_info_fname = fullfile(audio_dir, ['call_info_' params.bat_str '_' params.exp_date '.mat']);
         call_info = struct('eventpos',num2cell(vertcat(event_pos_data.file_event_pos),2),...
             'corrected_eventpos',num2cell(vertcat(event_pos_data.corrected_eventpos),2),...
             'juvCall',[],'echoCall',[],'behaviors',repmat({cell(1,nBehaviors)},length(event_pos_data),1));
         
-        params.eventpos = 1e-3*vertcat(event_pos_data.corrected_eventpos)'/50; % call position in minutes
+        params.eventpos = 1e-3*vertcat(event_pos_data.corrected_eventpos)'/60; % call position in minutes
         params.timestamps_string = 'nlg';
         
     case 'adult'
         nBehaviors = 1;
-        for v = 1:nVideo
-            batNums = {frame_ts_info{v}.batNum};
-            idx = strcmp(batNums,bat_str);
-            frame_ts_info{v} = frame_ts_info{v}(idx);
-        end
         
-        batIdx = unique(cellfun(@(call) find(cellfun(@(bNum) strcmp(bNum,batNums{idx}),call)),{event_pos_data.batNum}));
-        
-        if length(batIdx) == 1
-           callpos = horzcat(event_pos_data.corrected_callpos);
-           callpos = callpos(batIdx,:);
-           [event_pos_data.corrected_eventpos] = deal(callpos{:});
-        else
-           keyboard 
-        end
-        
-        allBehaviorList = [batNums 'unclear'];
+        allBehaviorList = {'Aggression','Non-aggresion','Unclear','Other'};
         call_info_fname = fullfile(audio_dir, ['call_info_' params.bat_str '_' params.exp_date '.mat']);
         call_info = struct('eventpos',num2cell(vertcat(event_pos_data.file_event_pos),2),...
             'corrected_eventpos',num2cell(vertcat(event_pos_data.corrected_eventpos),2),...
             'juvCall',[],'echoCall',[],'behaviors',repmat({cell(1,nBehaviors)},length(event_pos_data),1));
         params.timestamps_string = 'nlg';
         
-        params.eventpos = 1e-3*(vertcat(event_pos_data.corrected_eventpos)- frame_ts_info{v}.timestamps_nlg(1))'/50; % call position in minutes
+        params.eventpos = 1e-3*(vertcat(event_pos_data.corrected_eventpos)- frame_ts_info{v}.timestamps_nlg(1))'/60; % call position in minutes
 end
 
 if isfield(event_pos_data,'uniqueID')
@@ -178,6 +179,9 @@ guidata(params.hFig,call_info);
 
 initMovie(videoData,audioData,params,audio_dir,event_pos_data,frame_ts_info,allBehaviorList);
 
+
+colormap('gray')
+
 end
 
 function initMovie(videoData,audioData,params,audio_dir,event_pos_data,frame_ts_info,allBehaviorList)
@@ -190,7 +194,6 @@ setappdata(params.hFig,'currentFrame',1);
 a = audioplayer(audioData,params.audio_fs/playbackSpeed);
 frame_k = 1;
 a.UserData = frame_k;
-a.TimerFcn = {@plot_frame_audioplayer_callback, a, videoData, params.hMovie, params.hAudioTrace};
 a.StopFcn = {@stop_video_playback,params};
 a.TimerPeriod = playbackSpeed/params.video_fs;
 setappdata(params.hFig,'a',a);
@@ -217,16 +220,17 @@ xlim(params.hAudioTrace,[0 length(audioData)])
 ylim(params.hAudioTrace,[min(audioData) max(audioData)]);
 hold(params.hAudioTrace,'on');
 axis(params.hAudioTrace,'off');
-
-for s = 1:2
+imObjs = cell(1,params.nVideo);
+for s = 1:params.nVideo
     cla(params.hMovie(s))
     if ~isempty(videoData{s})
-        imshow(videoData{s}(:,:,1),'Parent',params.hMovie(s));
+        imObjs{s} = imagesc(videoData{s}(:,:,1),'Parent',params.hMovie(s));
     end
     axis(params.hMovie(s),'tight')
     axis(params.hMovie(s),'square')
 end
 
+a.TimerFcn = {@plot_frame_audioplayer_callback, a, videoData, params.hAudioTrace, imObjs};
 delete(findobj(params.hCalls,'Tag','CallMarker'));
 plot(params.hCalls,mean(params.eventpos(:,call_k)),1.1,'vk','MarkerFaceColor','k','Tag','CallMarker');
 
@@ -275,11 +279,23 @@ try
         end
         endTime = frame_ts_info{v}.file_frame_number(first_call_frame_idx(v) + frame_offset)/video_fs(v);
         nFrames = ceil((endTime - vidObj{v}.CurrentTime)*video_fs(v));
-        videoData{v} = zeros(vidObj{v}.Height,vidObj{v}.Width,nFrames,'uint8');
+        video_frame_size = [vidObj{v}.Height,vidObj{v}.Width];
+        downsampleFactor = 2;
+        if video_frame_size(1) > 512
+            downsampleFlag = true;
+            video_frame_size = floor(video_frame_size/downsampleFactor);
+        else
+            downsampleFlag = false;
+        end
+        videoData{v} = zeros(video_frame_size(1),video_frame_size(2),nFrames,'uint8');
         k = 1;
         while vidObj{v}.CurrentTime <= frame_ts_info{v}.file_frame_number(first_call_frame_idx(v) + frame_offset)/video_fs(v)
             temp = readFrame(vidObj{v});
-            videoData{v}(:,:,k) = adapthisteq(temp(:,:,1));
+            temp = temp(:,:,1);
+            if downsampleFlag 
+                temp = temp(1:downsampleFactor:vidObj{v}.Height,1:downsampleFactor:vidObj{v}.Width);
+            end
+            videoData{v}(:,:,k) = adapthisteq(temp);
             k = k + 1;
         end
     end
@@ -442,7 +458,7 @@ uicontrol('Style','text','units','normalized','position',...
     ['Playback speed: 1/' num2str(round(playbackSpeed*10)/10) 'x']);
 
 uicontrol(params.hFig,'unit','normalize','style','slider','Min',0.1,'Max',...
-    5,'Value',callOffset,'SliderStep',[0.1 0.2],'position',...
+    2,'Value',callOffset,'SliderStep',[0.05 0.1],'position',...
     [0.65,0.91,0.1,0.05],'tag','callOffset','callback',...
     {@updateCallOffset,params,audio_dir,event_pos_data,frame_ts_info,call_k,allBehaviorList})
 
@@ -801,22 +817,12 @@ nextVideoCallback(hObject,[],params,audio_dir,event_pos_data,frame_ts_info,call_
 
 end
 
-function plot_frame_audioplayer_callback(~,~,player,videoData,movieAxes,audioMarker)
+function plot_frame_audioplayer_callback(~,~,player,videoData,audioMarker,imObj)
 
-try
-    frame_k = player.UserData;
-    for v = 1:length(videoData)
-        cla(movieAxes(v));
-        if ~isempty(videoData{v})
-            imagesc(movieAxes(v), videoData{v}(:,:,frame_k));
-        end
-    end
-catch
-    frame_k = player.UserData;
-    for v = 1:length(videoData)
-        if ~isempty(videoData{v})
-            imagesc(movieAxes(v), videoData{v}(:,:,size(videoData{v},3)));
-        end
+for v = 1:length(videoData)
+    frame_k = min(size(videoData{v},3),player.UserData);
+    if ~isempty(videoData{v})
+        set(imObj{v}, 'CData', videoData{v}(:,:,frame_k));
     end
 end
 player.UserData = frame_k + 1;
