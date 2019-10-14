@@ -48,7 +48,7 @@ end
 
 audio_dir = fullfile(exp_dir, 'audio', 'communication', 'ch1');
 
-if isempty(event_pos_data)    
+if isempty(event_pos_data)
     bat_num_classification_fname = fullfile(audio_dir,'manual_al_classify_batNum.mat');
     s = load(fullfile(audio_dir, 'cut_call_data.mat'));
     event_pos_data = s.cut_call_data;
@@ -63,12 +63,12 @@ if isempty(event_pos_data)
             event_pos_data = event_pos_data(batIdx);
         end
     end
-
+    
     [event_pos_data.corrected_eventpos] = event_pos_data.corrected_callpos;
     [event_pos_data.file_event_pos] = event_pos_data.callpos;
     
 else
-
+    
     if ~any(isnan([event_pos_data.noise]))
         event_pos_data = event_pos_data(~[event_pos_data.noise]);
     end
@@ -79,8 +79,8 @@ else
     if ~isfield(event_pos_data,'file_event_pos')
         [event_pos_data.file_event_pos] = event_pos_data.callpos;
     end
-%     nlg_times = varargin{1};
-%     event_pos_data = get_event_pos_data(exp_dir,nlg_times); % still needs writing!!
+    %     nlg_times = varargin{1};
+    %     event_pos_data = get_event_pos_data(exp_dir,nlg_times); % still needs writing!!
     
 end
 
@@ -99,7 +99,7 @@ switch exp_type
         nBehaviors = 1;
         call_info = struct('eventpos',num2cell(vertcat(event_pos_data.file_event_pos),2),...
             'corrected_eventpos',num2cell(vertcat(event_pos_data.corrected_eventpos),2),...
-            'juvCall',[],'echoCall',[],'behaviors',repmat({cell(1,nBehaviors)},length(event_pos_data),1));
+            'behaviors',repmat({cell(1,nBehaviors)},length(event_pos_data),1));
         allBehaviorList = {'male','female','unclear'};
         
         params.eventpos = 1e-3*vertcat(event_pos_data.corrected_eventpos)'/60; % call position in minutes
@@ -123,7 +123,7 @@ switch exp_type
         call_info_fname = fullfile(audio_dir, ['call_info_' params.bat_str '_' params.exp_date '.mat']);
         call_info = struct('eventpos',num2cell(vertcat(event_pos_data.file_event_pos),2),...
             'corrected_eventpos',num2cell(vertcat(event_pos_data.corrected_eventpos),2),...
-            'juvCall',[],'echoCall',[],'behaviors',repmat({cell(1,nBehaviors)},length(event_pos_data),1));
+            'behaviors',repmat({cell(1,nBehaviors)},length(event_pos_data),1));
         
         params.eventpos = 1e-3*vertcat(event_pos_data.corrected_eventpos)'/60; % call position in minutes
         params.timestamps_string = 'nlg';
@@ -131,11 +131,11 @@ switch exp_type
     case 'adult'
         nBehaviors = 1;
         
-        allBehaviorList = {'Aggression','Non-aggresion','Unclear','Other'};
+        allBehaviorList = {'Aggression','Incidental','Probing','Unclear','Other'};
         call_info_fname = fullfile(audio_dir, ['call_info_' params.bat_str '_' params.exp_date '.mat']);
         call_info = struct('eventpos',num2cell(vertcat(event_pos_data.file_event_pos),2),...
             'corrected_eventpos',num2cell(vertcat(event_pos_data.corrected_eventpos),2),...
-            'juvCall',[],'echoCall',[],'behaviors',repmat({cell(1,nBehaviors)},length(event_pos_data),1));
+            'batsInvolved',[],'behaviors',repmat({cell(1,nBehaviors)},length(event_pos_data),1));
         params.timestamps_string = 'nlg';
         
         params.eventpos = 1e-3*(vertcat(event_pos_data.corrected_eventpos)- frame_ts_info{v}.timestamps_nlg(1))'/60; % call position in minutes
@@ -148,6 +148,7 @@ else
     [call_info.callID] = callID{:};
 end
 
+% try to get existing call_info file
 
 try
     s = load(call_info_fname);
@@ -161,6 +162,25 @@ try
 catch
     disp(['couldn''t find ' call_info_fname]);
 end
+
+% ask for bat ID strings for identity tagging
+
+bat_ID_strs = inputdlg('Enter comma separated bat numbers: ');
+bat_ID_strs = bat_ID_strs{1};
+
+if ~isempty(bat_ID_strs)
+    bat_ID_strs = strrep(bat_ID_strs,' ','');
+    bat_ID_strs = strsplit(bat_ID_strs,',');
+    
+    try
+        assert(all(cellfun(@length,bat_ID_strs) == 5));
+    catch
+        disp('Bat ID numbers are 5 digit strings')
+        close(params.hFig);
+    end
+end
+
+params.bat_IDs = bat_ID_strs;
 
 Y = repmat([0; 1], 1, length(params.eventpos));
 plot(hCalls,params.eventpos,Y,'r')
@@ -273,11 +293,11 @@ try
         try
             vidObj{v}.CurrentTime = frame_ts_info{v}.file_frame_number(first_call_frame_idx(v) - frame_offset)/video_fs(v);
         catch err
-           if strcmp(err.identifier,'MATLAB:set:notLessEqual')
-               warning('Current video time greater than video length')
-           else
-               rethrow(err)
-           end
+            if strcmp(err.identifier,'MATLAB:set:notLessEqual')
+                warning('Current video time greater than video length')
+            else
+                rethrow(err)
+            end
         end
         endTime = frame_ts_info{v}.file_frame_number(first_call_frame_idx(v) + frame_offset)/video_fs(v);
         nFrames = ceil((endTime - vidObj{v}.CurrentTime)*video_fs(v));
@@ -294,11 +314,11 @@ try
         while vidObj{v}.CurrentTime <= frame_ts_info{v}.file_frame_number(first_call_frame_idx(v) + frame_offset)/video_fs(v)
             temp = readFrame(vidObj{v});
             temp = temp(:,:,1);
-            if downsampleFlag 
+            if downsampleFlag
                 temp = temp(1:downsampleFactor:vidObj{v}.Height,1:downsampleFactor:vidObj{v}.Width);
             end
             if imageContrast > 0
-            videoData{v}(:,:,k) = adapthisteq(temp,'ClipLimit',imageContrast,'NumTiles',[8 8]);
+                videoData{v}(:,:,k) = adapthisteq(temp,'ClipLimit',imageContrast,'NumTiles',[8 8]);
             else
                 videoData{v}(:,:,k) = temp;
             end
@@ -331,7 +351,7 @@ try
         if f_num > 1
             f_num = f_num - 1;
         else
-            requested_audio_samples(requested_audio_samples<=0) = 1;            
+            requested_audio_samples(requested_audio_samples<=0) = 1;
         end
         audio_file_idx = wav_file_nums == f_num;
         pad_audio_data = audioread([audio_files(audio_file_idx).folder filesep audio_files(audio_file_idx).name]);
@@ -376,13 +396,6 @@ playbackSpeed = getappdata(params.hFig,'playbackSpeed');
 callOffset = getappdata(params.hFig,'callOffset');
 imageContrast = getappdata(params.hFig,'imageContrast');
 nBehaviors = length(call_info(call_k).behaviors);
-checkJuv = strcmp(call_info(call_k).juvCall,'juv');
-checkAdult = strcmp(call_info(call_k).juvCall,'adult');
-checkNoise = strcmp(call_info(call_k).juvCall,'noise');
-checkUnclear = strcmp(call_info(call_k).juvCall,'unclear');
-checkJuvEcho = strcmp(call_info(call_k).echoCall,'juvEcho');
-checkAdultEcho = strcmp(call_info(call_k).echoCall,'adultEcho');
-checkUnclearEcho = strcmp(call_info(call_k).echoCall,'unclearEcho');
 
 % Play button with text Start/Pause/Continue
 
@@ -422,33 +435,12 @@ uicontrol(controlPanel,'unit','normalized','style','pushbutton','string','Save V
 vocalizationPanel = uipanel(params.hFig,'unit','normalized','Title','Vocalization Panel',...
     'Position',[0.02 0.5 0.076 0.35],'tag','vocalization');
 
-uicontrol(vocalizationPanel,'unit','normalized','style','checkbox','string','Juvenile Vocalization',...
-    'position',[0.1,0.9,0.9,0.1],'value',checkJuv,'callback', ...
-    {@updateJuvCallCallback,params,call_k});
+involvedString = call_info(call_k).batsInvolved;
+involvedValue = find(strcmp(involvedString,[{''} params.bat_IDs]));
+uicontrol(vocalizationPanel,'unit','normalized','style','listbox','string',...
+        [{''} params.bat_IDs],'position',[0.01 0.4 0.9 0.5],'value',involvedValue,...
+        'Min',0,'Max',length(params.bat_IDs),'callback',{@updateCallInfoCallback,params,call_k});
 
-uicontrol(vocalizationPanel,'unit','normalized','style','checkbox','string','Adult Vocalization',...
-    'position',[0.1,0.8,0.9,0.1],'value',checkAdult,'callback', ...
-    {@updateJuvCallCallback,params,call_k});
-
-uicontrol(vocalizationPanel,'unit','normalized','style','checkbox','string','Unclear attribution',...
-    'position',[0.1,0.7,0.9,0.1],'value',checkUnclear,'callback', ...
-    {@updateJuvCallCallback,params,call_k});
-
-uicontrol(vocalizationPanel,'unit','normalized','style','checkbox','string','Juvenile Echo',...
-    'position',[0.1,0.5,0.9,0.1],'value',checkJuvEcho,'callback', ...
-    {@updateJuvCallCallback,params,call_k});
-
-uicontrol(vocalizationPanel,'unit','normalized','style','checkbox','string','Adult Echo',...
-    'position',[0.1,0.4,0.9,0.1],'value',checkAdultEcho,'callback', ...
-    {@updateJuvCallCallback,params,call_k});
-
-uicontrol(vocalizationPanel,'unit','normalized','style','checkbox','string','Unclear Echo',...
-    'position',[0.1,0.3,0.9,0.1],'value',checkUnclearEcho,'callback', ...
-    {@updateJuvCallCallback,params,call_k});
-
-uicontrol(vocalizationPanel,'unit','normalized','style','checkbox','string','Noise',...
-    'position',[0.1,0.1,0.9,0.1],'value',checkNoise,'callback', ...
-    {@updateJuvCallCallback,params,call_k});
 
 callNumbers = strsplit(num2str(1:length(event_pos_data)));
 eventpos = num2cell(round(params.eventpos),1);
@@ -501,45 +493,23 @@ for b = 1:nBehaviors
     if ~isempty(behaviorString)
         behaviorStringSplit = strsplit(behaviorString,'-');
         behaviorValue = find(strcmp(behaviorStringSplit{4}, [{''} allBehaviorList]));
-        batIdentityValues = strcmp(behaviorStringSplit{1},{'Juvenile','Adult'});
-        contactValues = strcmp(behaviorStringSplit{2},{'Contact','No Contact'});
-        contactDirectionValues = strcmp(behaviorStringSplit{3},{'Facing','Not Facing'});
+        batIdentityValues = strcmp(behaviorStringSplit{1},{'Grouped','Spread'});
     else
         behaviorValue = 1;
         batIdentityValues = zeros(1,2);
-        contactValues = zeros(1,2);
-        contactDirectionValues = zeros(1,2);
     end
     
     uicontrol(subBehaviorPanel,'unit','normalized','style','popupmenu','string',...
         [{''} allBehaviorList],'position',[0.01 0.1 0.9 0.15],'value',behaviorValue,...
-        'callback',{@updateJuvCallCallback,params,call_k});
+        'callback',{@updateCallInfoCallback,params,call_k});
     
-    bgBatIdentity = uibuttongroup(subBehaviorPanel,'Position',[0 0.25 1 0.2],...
-        'SelectionChangedFcn',{@updateJuvCallCallback,params,call_k},...
+    bgGrouping = uibuttongroup(subBehaviorPanel,'Position',[0 0.25 1 0.2],...
+        'SelectionChangedFcn',{@updateCallInfoCallback,params,call_k},...
         'tag','behavior');
-    uicontrol(bgBatIdentity,'unit','normalized','Style','radiobutton','String',...
-        'Juvenile','position',[0 0 0.5 1],'value',batIdentityValues(1));
-    uicontrol(bgBatIdentity,'unit','normalized','Style','radiobutton','String',...
-        'Adult','position',[0.5 0 0.5 1],'value',batIdentityValues(2));
-    
-    bgContact = uibuttongroup(subBehaviorPanel,'Position',[0 0.5 1 0.2],...
-        'SelectionChangedFcn',{@updateJuvCallCallback,params,call_k},...
-        'tag','behavior');
-    uicontrol(bgContact,'unit','normalized','Style','radiobutton','String',...
-        'Contact','position',[0 0 0.5 1],'value',contactValues(1));
-    uicontrol(bgContact,'unit','normalized','Style','radiobutton','String',...
-        'No Contact','position',[0.5 0 0.5 1],'value',contactValues(2));
-    
-    bgContactDirection = uibuttongroup(subBehaviorPanel,'Position',[0 0.75 1 0.2],...
-        'SelectionChangedFcn',{@updateJuvCallCallback,params,call_k},...
-        'tag','behavior');
-    uicontrol(bgContactDirection,'unit','normalized','Style','radiobutton','String',...
-        'Facing','position',[0 0 0.5 1],'value',contactDirectionValues(1));
-    uicontrol(bgContactDirection,'unit','normalized','Style','radiobutton','String',...
-        'Not Facing','position',[0.5 0 0.5 1],'value',contactDirectionValues(2));
-    
-    
+    uicontrol(bgGrouping,'unit','normalized','Style','radiobutton','String',...
+        'Grouped','position',[0 0 0.5 1],'value',batIdentityValues(1));
+    uicontrol(bgGrouping,'unit','normalized','Style','radiobutton','String',...
+        'Spread','position',[0.5 0 0.5 1],'value',batIdentityValues(2));
     
 end
 
@@ -627,81 +597,22 @@ set(params.hFig, 'pointer', 'arrow')
 
 end
 
-function updateJuvCallCallback(hObject,~,params,call_k)
+function updateCallInfoCallback(hObject,~,params,call_k)
 
 call_info = guidata(params.hFig);
 
 switch hObject.Parent.Tag
+    
     case 'vocalization'
         
-        checkValue = get(hObject,'Value');
-        maxValue = get(hObject,'Max');
-        minValue = get(hObject,'Min');
-        
-        switch hObject.String
-            case 'Juvenile Vocalization'
-                if(checkValue == maxValue)
-                    display('Recorded as Juvenile Call');
-                    call_info(call_k).juvCall = 'juv';
-                elseif(checkValue == minValue)
-                    display('Recorded as not Juvenile Call');
-                    call_info(call_k).juvCall = [];
-                end
-                
-            case 'Noise'
-                if(checkValue == maxValue)
-                    display('Recorded as Noise');
-                    call_info(call_k).juvCall = 'noise';
-                elseif(checkValue == minValue)
-                    display('Recorded as not Noise');
-                    call_info(call_k).juvCall = [];
-                end
-                
-            case 'Adult Vocalization'
-                if(checkValue == maxValue)
-                    display('Recorded as Adult Call');
-                    call_info(call_k).juvCall = 'adult';
-                elseif(checkValue == minValue)
-                    display('Recorded as not Adult');
-                    call_info(call_k).juvCall = [];
-                end
-                
-            case 'Unclear attribution'
-                if(checkValue == maxValue)
-                    display('Recorded as Unclear Call');
-                    call_info(call_k).juvCall = 'unclear';
-                elseif(checkValue == minValue)
-                    display('Recorded as not Unclear');
-                    call_info(call_k).juvCall = [];
-                end
-                
-            case 'Juvenile Echo'
-                if(checkValue == maxValue)
-                    display('Recorded as Juvenile Echo');
-                    call_info(call_k).echoCall = 'juvEcho';
-                elseif(checkValue == minValue)
-                    display('Recorded as not Juvenile Echo');
-                    call_info(call_k).echoCall = [];
-                end
-                
-            case 'Adult Echo'
-                if(checkValue == maxValue)
-                    display('Recorded as Adult Echo');
-                    call_info(call_k).echoCall = 'adultEcho';
-                elseif(checkValue == minValue)
-                    display('Recorded as not Adult Echo');
-                    call_info(call_k).echoCall = [];
-                end
-                
-            case 'Unclear Echo'
-                if(checkValue == maxValue)
-                    display('Recorded as Unclear Echo');
-                    call_info(call_k).echoCall = 'unclearEcho';
-                elseif(checkValue == minValue)
-                    display('Recorded as not Unclear Echo');
-                    call_info(call_k).echoCall = [];
-                end
-                
+        if length(hObject.Value) > 1
+            call_info(call_k).batsInvolved = hObject.String(hObject.Value);
+        else
+            if strcmp(hObject.String(hObject.Value),'')
+                call_info(call_k).batsInvolved = [];
+            else
+                call_info(call_k).batsInvolved = {hObject.String(hObject.Value)};
+            end
         end
         
     case 'behavior'
@@ -741,7 +652,7 @@ function loadDataCallback(~,~,params,audio_dir)
 
 if strcmp(params.exp_type,'nlg')
     call_info_fname = fullfile(audio_dir, ['juv_call_info_' params.bat_str '_' params.exp_date '.mat']);
-else 
+else
     call_info_fname = fullfile(audio_dir, ['call_info_' params.bat_str '_' params.exp_date '.mat']);
 end
 try
@@ -767,7 +678,7 @@ function saveDataCallback(~,~,params,audio_dir)
 
 if strcmp(params.exp_type,'nlg')
     call_info_fname = fullfile(audio_dir, ['juv_call_info_' params.bat_str '_' params.exp_date '.mat']);
-else 
+else
     call_info_fname = fullfile(audio_dir, ['call_info_' params.bat_str '_' params.exp_date '.mat']);
 end
 if exist(call_info_fname,'file')
