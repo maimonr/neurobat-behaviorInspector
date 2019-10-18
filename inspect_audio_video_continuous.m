@@ -1,7 +1,7 @@
 function inspect_audio_video_continuous(exp_dir,varargin)
 
 pnames = {'exp_type','bat_str','exp_date','event_pos_data','onlyBouts'};
-dflts  = {'adult','bat',date,[],false};
+dflts  = {'adult','bat',date,[],true};
 [exp_type,bat_str,exp_date,event_pos_data,only_bout_flag] = internal.stats.parseArgs(pnames,dflts,varargin{:});
 
 nVideo = 2;
@@ -483,7 +483,7 @@ uicontrol('Style','text','units','normalized','position',...
     ['Call offset: ' num2str(round(callOffset*10)/10) ' s']);
 
 uicontrol(params.hFig,'unit','normalize','style','slider','Min',0,'Max',...
-    0.5,'Value',imageContrast,'SliderStep',[0.05 0.1],'position',...
+    0.25,'Value',imageContrast,'SliderStep',[0.01 0.1],'position',...
     [0.8,0.91,0.1,0.05],'tag','imageContrast','callback',...
     {@updateContrast,params,audio_dir,event_pos_data,frame_ts_info,call_k,allBehaviorList})
 
@@ -818,7 +818,7 @@ end
 function save_video_callback(~,~,params)
 
 appData = getappdata(params.hFig);
-video_clip_dir = 'E:\ephys\adult_recording\data_analysis_results\example_video_clips';
+video_clip_dir = params.exp_dir;
 exp_dir_file_parts = strsplit(params.exp_dir,'\');
 
 for v_k = 1:params.nVideo
