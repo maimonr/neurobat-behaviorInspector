@@ -131,7 +131,7 @@ switch exp_type
     case 'adult'
         nBehaviors = 1;
         
-        allBehaviorList = {'Aggression','Incidental','Probing','Unclear','Other'};
+        allBehaviorList = {'Aggression','Incidental','Probing','Spontaneous','Unclear','Other'};
         call_info_fname = fullfile(audio_dir, ['call_info_' params.bat_str '_' params.exp_date '.mat']);
         call_info = struct('eventpos',num2cell(vertcat(event_pos_data.file_event_pos),2),...
             'corrected_eventpos',num2cell(vertcat(event_pos_data.corrected_eventpos),2),...
@@ -441,7 +441,12 @@ vocalizationPanel = uipanel(params.hFig,'unit','normalized','Title','Vocalizatio
     'Position',[0.02 0.5 0.076 0.35],'tag','vocalization');
 
 involvedString = call_info(call_k).batsInvolved;
-involvedValue = find(strcmp(involvedString,[{''} params.bat_IDs]));
+if ~isempty(involvedString)
+    involvedValue = find(strcmp(involvedString,[{''} params.bat_IDs]));
+else
+    involvedValue = 1;
+end
+
 if isempty(involvedValue)
     involvedValue = 1;
 end
@@ -500,7 +505,7 @@ for b = 1:nBehaviors
     behaviorString = call_info(call_k).behaviors{b};
     if ~isempty(behaviorString)
         behaviorStringSplit = strsplit(behaviorString,'-');
-        behaviorValue = find(strcmp(behaviorStringSplit{4}, [{''} allBehaviorList]));
+        behaviorValue = find(strcmp(behaviorStringSplit{2}, [{''} allBehaviorList]));
         batIdentityValues = strcmp(behaviorStringSplit{1},{'Grouped','Spread'});
     else
         behaviorValue = 1;
