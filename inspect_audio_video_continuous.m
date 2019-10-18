@@ -290,8 +290,13 @@ try
         vidObj{v} = VideoReader(Path2Video_new);
         video_fs(v) = vidObj{v}.FrameRate;
         frame_offset = round(video_fs(v)*callOffset);
+        startFrame = first_call_frame_idx(v) - frame_offset;
+        if startFrame <= 0
+           disp('Frame index less than 0. Continuing to next event')
+           continue
+        end
         try
-            vidObj{v}.CurrentTime = frame_ts_info{v}.file_frame_number(first_call_frame_idx(v) - frame_offset)/video_fs(v);
+            vidObj{v}.CurrentTime = frame_ts_info{v}.file_frame_number(startFrame)/video_fs(v);
         catch err
             if strcmp(err.identifier,'MATLAB:set:notLessEqual')
                 warning('Current video time greater than video length')
@@ -437,6 +442,9 @@ vocalizationPanel = uipanel(params.hFig,'unit','normalized','Title','Vocalizatio
 
 involvedString = call_info(call_k).batsInvolved;
 involvedValue = find(strcmp(involvedString,[{''} params.bat_IDs]));
+if isempty(involvedValue)
+    involvedValue = 1;
+end
 uicontrol(vocalizationPanel,'unit','normalized','style','listbox','string',...
         [{''} params.bat_IDs],'position',[0.01 0.4 0.9 0.5],'value',involvedValue,...
         'Min',0,'Max',length(params.bat_IDs),'callback',{@updateCallInfoCallback,params,call_k});
