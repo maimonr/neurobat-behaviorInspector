@@ -54,9 +54,7 @@ if isempty(event_pos_data)
     s = load(fullfile(audio_dir, 'cut_call_data.mat'));
     event_pos_data = s.cut_call_data;
     
-    if ~any(isnan([event_pos_data.noise]))
-        event_pos_data = event_pos_data(~[event_pos_data.noise]);
-    elseif exist(bat_num_classification_fname,'file')
+    if exist(bat_num_classification_fname,'file')
         s = load(bat_num_classification_fname);
         batNums = s.manual_al_classify_batNum;
         if length(batNums) == length(event_pos_data)
@@ -65,6 +63,8 @@ if isempty(event_pos_data)
             batNums = batNums(batIdx);
             [event_pos_data.batNum] = batNums{:};
         end
+    elseif ~any(isnan([event_pos_data.noise]))
+        event_pos_data = event_pos_data(~[event_pos_data.noise]);
     end
     
     [event_pos_data.corrected_eventpos] = event_pos_data.corrected_callpos;
