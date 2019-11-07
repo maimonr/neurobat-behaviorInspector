@@ -25,6 +25,7 @@ setappdata(params.hFig,'isPlayingVideo',0);
 setappdata(params.hFig,'initialize',1);
 setappdata(params.hFig,'playbackSpeed',2);
 setappdata(params.hFig,'callOffset',1);
+setappdata(params.hFig,'timeOffset',0);
 setappdata(params.hFig,'imageContrast',0.01);
 setappdata(params.hFig,'call_k',call_k)
 
@@ -61,6 +62,8 @@ if isempty(event_pos_data)
         if length(batNums) == length(event_pos_data)
             batIdx = ~strcmp(batNums,'noise');
             event_pos_data = event_pos_data(batIdx);
+            batNums = batNums(batIdx);
+            [event_pos_data.batNum] = batNums{:};
         end
     end
     
@@ -262,6 +265,7 @@ function [audioData,videoData,params,success] = loadNextCall(event_pos_data,fram
 call_k = getappdata(params.hFig,'call_k');
 callOffset = getappdata(params.hFig,'callOffset');
 imageContrast = getappdata(params.hFig,'imageContrast');
+timeOffset = getappdata(params.hFig,'timeOffset');
 
 try
     
@@ -289,14 +293,14 @@ try
         
         vidObj{v} = VideoReader(Path2Video_new);
         video_fs(v) = vidObj{v}.FrameRate;
-        frame_offset = round(video_fs(v)*callOffset);
+        frame_offset = round(video_fs(v)*(callOffset));
         startFrame = first_call_frame_idx(v) - frame_offset;
         if startFrame <= 0
            disp('Frame index less than 0. Continuing to next event')
            continue
         end
         try
-            vidObj{v}.CurrentTime = frame_ts_info{v}.file_frame_number(startFrame)/video_fs(v);
+            vidObj{v}.CurrentTime = timeOffset + frame_ts_info{v}.file_frame_number(startFrame)/video_fs(v);
         catch err
             if strcmp(err.identifier,'MATLAB:set:notLessEqual')
                 warning('Current video time greater than video length')
@@ -304,7 +308,7 @@ try
                 rethrow(err)
             end
         end
-        endTime = frame_ts_info{v}.file_frame_number(first_call_frame_idx(v) + frame_offset)/video_fs(v);
+        endTime = timeOffset + frame_ts_info{v}.file_frame_number(first_call_frame_idx(v) + frame_offset)/video_fs(v);
         nFrames = ceil((endTime - vidObj{v}.CurrentTime)*video_fs(v));
         video_frame_size = [vidObj{v}.Height,vidObj{v}.Width];
         downsampleFactor = 2;
@@ -316,7 +320,7 @@ try
         end
         videoData{v} = zeros(video_frame_size(1),video_frame_size(2),nFrames,'uint8');
         k = 1;
-        while vidObj{v}.CurrentTime <= frame_ts_info{v}.file_frame_number(first_call_frame_idx(v) + frame_offset)/video_fs(v)
+        while vidObj{v}.CurrentTime <= timeOffset + frame_ts_info{v}.file_frame_number(first_call_frame_idx(v) + frame_offset)/video_fs(v)
             temp = readFrame(vidObj{v});
             temp = temp(:,:,1);
             if downsampleFlag
@@ -399,6 +403,7 @@ call_k = getappdata(params.hFig,'call_k');
 call_info = guidata(params.hFig);
 playbackSpeed = getappdata(params.hFig,'playbackSpeed');
 callOffset = getappdata(params.hFig,'callOffset');
+timeOffset = getappdata(params.hFig,'timeOffset');
 imageContrast = getappdata(params.hFig,'imageContrast');
 nBehaviors = length(call_info(call_k).behaviors);
 
@@ -442,7 +447,7 @@ vocalizationPanel = uipanel(params.hFig,'unit','normalized','Title','Vocalizatio
 
 involvedString = call_info(call_k).batsInvolved;
 if ~isempty(involvedString)
-    involvedValue = find(strcmp(involvedString,[{''} params.bat_IDs]));
+    involvedValue = find(ismember([{''} params.bat_IDs],involvedString));
 else
     involvedValue = 1;
 end
@@ -454,6 +459,14 @@ uicontrol(vocalizationPanel,'unit','normalized','style','listbox','string',...
         [{''} params.bat_IDs],'position',[0.01 0.4 0.9 0.5],'value',involvedValue,...
         'Min',0,'Max',length(params.bat_IDs),'callback',{@updateCallInfoCallback,params,call_k});
 
+if ~isnan(event_pos_data(call_k).batNum)
+    voc_bat_ID = event_pos_data(call_k).batNum;
+else
+    voc_bat_ID = '?';
+end
+    
+uicontrol(vocalizationPanel,'unit','normalized','style','text','string',...
+    ['Vocalizer: ' voc_bat_ID],'position',[0.01 0.2 0.9 0.2]);
 
 callNumbers = strsplit(num2str(1:length(event_pos_data)));
 eventpos = num2cell(round(params.eventpos),1);
@@ -466,29 +479,38 @@ uicontrol(params.hFig,'unit','normalized','style','popupmenu','string',...
 
 uicontrol(params.hFig,'unit','normalize','style','slider','Min',1,'Max',...
     20,'Value',playbackSpeed,'SliderStep',[0.1 0.2],'position',...
-    [0.525,0.91,0.1,0.05],'tag','playbackSpeed','callback',...
+    [0.5,0.91,0.1,0.05],'tag','playbackSpeed','callback',...
     {@updatePlaybackSpeed,params})
 
 uicontrol('Style','text','units','normalized','position',...
-    [0.525 0.965 0.1 0.025],'tag','playback_speed_text','String',...
+    [0.5 0.965 0.1 0.025],'tag','playback_speed_text','String',...
     ['Playback speed: 1/' num2str(round(playbackSpeed*10)/10) 'x']);
 
 uicontrol(params.hFig,'unit','normalize','style','slider','Min',0.1,'Max',...
     2,'Value',callOffset,'SliderStep',[0.05 0.1],'position',...
-    [0.65,0.91,0.1,0.05],'tag','callOffset','callback',...
+    [0.625,0.91,0.1,0.05],'tag','callOffset','callback',...
     {@updateCallOffset,params,audio_dir,event_pos_data,frame_ts_info,call_k,allBehaviorList})
 
 uicontrol('Style','text','units','normalized','position',...
-    [0.65 0.965 0.1 0.025],'tag','call_offset_text','String',...
+    [0.625 0.965 0.1 0.025],'tag','call_offset_text','String',...
     ['Call offset: ' num2str(round(callOffset*10)/10) ' s']);
+
+uicontrol(params.hFig,'unit','normalize','style','slider','Min',-2,'Max',...
+    2,'Value',timeOffset,'SliderStep',[0.05 0.1],'position',...
+    [0.75,0.91,0.1,0.05],'tag','timeOffset','callback',...
+    {@updateTimeOffset,params,audio_dir,event_pos_data,frame_ts_info,call_k,allBehaviorList})
+
+uicontrol('Style','text','units','normalized','position',...
+    [0.75 0.965 0.1 0.025],'tag','time_offset_text','String',...
+    ['Call offset: ' num2str(round(timeOffset*10)/10) ' s']);
 
 uicontrol(params.hFig,'unit','normalize','style','slider','Min',0,'Max',...
     0.25,'Value',imageContrast,'SliderStep',[0.01 0.1],'position',...
-    [0.8,0.91,0.1,0.05],'tag','imageContrast','callback',...
+    [0.875,0.91,0.1,0.05],'tag','imageContrast','callback',...
     {@updateContrast,params,audio_dir,event_pos_data,frame_ts_info,call_k,allBehaviorList})
 
 uicontrol('Style','text','units','normalized','position',...
-    [0.8 0.965 0.1 0.025],'tag','image_contrast_text','String',...
+    [0.875 0.965 0.1 0.025],'tag','image_contrast_text','String',...
     ['Image contrast: ' num2str(round(imageContrast*100)/100)]);
 
 
@@ -756,6 +778,16 @@ function updateContrast(hObject,~,params,audio_dir,event_pos_data,frame_ts_info,
 setappdata(params.hFig,'imageContrast',hObject.Value);
 textH = findobj(params.hFig,'tag','image_contrast_text');
 textH.String = ['Image contrast: ' num2str(round(hObject.Value*100)/100)];
+
+nextVideoCallback(hObject,[],params,audio_dir,event_pos_data,frame_ts_info,call_k,allBehaviorList)
+
+end
+
+function updateTimeOffset(hObject,~,params,audio_dir,event_pos_data,frame_ts_info,call_k,allBehaviorList)
+
+setappdata(params.hFig,'timeOffset',hObject.Value);
+textH = findobj(params.hFig,'tag','time_offset_text');
+textH.String = ['Call offset: ' num2str(round(hObject.Value*10)/10) ' s'];
 
 nextVideoCallback(hObject,[],params,audio_dir,event_pos_data,frame_ts_info,call_k,allBehaviorList)
 
