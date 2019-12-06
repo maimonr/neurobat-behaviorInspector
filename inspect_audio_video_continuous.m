@@ -446,7 +446,11 @@ vocalizationPanel = uipanel(params.hFig,'unit','normalized','Title','Vocalizatio
     'Position',[0.02 0.5 0.076 0.35],'tag','vocalization');
 
 involvedString = call_info(call_k).batsInvolved;
+
 if ~isempty(involvedString)
+    if length(involvedString) == 1
+        involvedString = [involvedString{:}];
+    end
     involvedValue = find(ismember([{''} params.bat_IDs],involvedString));
 else
     involvedValue = 1;
