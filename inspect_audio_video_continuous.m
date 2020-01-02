@@ -336,6 +336,10 @@ try
     end
     params.video_fs = mean(video_fs);
     params.nFrames = min(cellfun(@(x) size(x,3),videoData));
+    if iscell(event_pos_data(call_k).fName)
+        event_pos_data(call_k).fName = event_pos_data(call_k).fName{1};
+        event_pos_data(call_k).f_num = event_pos_data(call_k).f_num(1);
+    end
     if isunix
         Path2Audio_temp = fileparts(strrep(event_pos_data(call_k).fName, '\','/'));
         Path2Audio = fullfile(params.exp_dir, Path2Audio_temp((strfind(Path2Audio_temp, FolderDate) + length(FolderDate)+1):end));
