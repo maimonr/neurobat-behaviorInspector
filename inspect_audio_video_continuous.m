@@ -1,8 +1,8 @@
 function inspect_audio_video_continuous(exp_dir,varargin)
 
-pnames = {'exp_type','bat_str','exp_date','event_pos_data','onlyBouts'};
-dflts  = {'adult','bat',date,[],true};
-[exp_type,bat_str,exp_date,event_pos_data,only_bout_flag] = internal.stats.parseArgs(pnames,dflts,varargin{:});
+pnames = {'exp_type','bat_str','exp_date','event_pos_data','onlyBouts','sessionType'};
+dflts  = {'adult','bat',date,[],true,'communication'};
+[exp_type,bat_str,exp_date,event_pos_data,only_bout_flag,sessionType] = internal.stats.parseArgs(pnames,dflts,varargin{:});
 
 nVideo = 2;
 h = figure;
@@ -26,7 +26,7 @@ setappdata(params.hFig,'initialize',1);
 setappdata(params.hFig,'playbackSpeed',2);
 setappdata(params.hFig,'callOffset',1);
 setappdata(params.hFig,'timeOffset',0);
-setappdata(params.hFig,'imageContrast',0.01);
+setappdata(params.hFig,'imageContrast',0);
 setappdata(params.hFig,'call_k',call_k)
 
 video_files = cell(1,nVideo);
@@ -47,7 +47,7 @@ for v = 1:nVideo
     frame_ts_info{v} = s.frame_ts_info;
 end
 
-audio_dir = fullfile(exp_dir, 'audio', 'communication', 'ch1');
+audio_dir = fullfile(exp_dir, 'audio', sessionType, 'ch1');
 
 if isempty(event_pos_data)
     bat_num_classification_fname = fullfile(audio_dir,'manual_al_classify_batNum.mat');
@@ -174,12 +174,10 @@ bat_ID_strs = bat_ID_strs{1};
 if ~isempty(bat_ID_strs)
     bat_ID_strs = strrep(bat_ID_strs,' ','');
     bat_ID_strs = strsplit(bat_ID_strs,',');
-    
-    try
-        assert(all(cellfun(@length,bat_ID_strs) == 5));
-    catch
-        disp('Bat ID numbers are 5 digit strings')
-        close(params.hFig);
+
+    if ~all(cellfun(@length,bat_ID_strs) == 5)
+        disp('Bat ID numbers are 5 digit strings, please verify')
+        bat_ID_strs = inputdlg('Enter comma separated bat numbers: ');
     end
 end
 
@@ -254,7 +252,7 @@ for s = 1:params.nVideo
     axis(params.hMovie(s),'square')
 end
 
-a.TimerFcn = {@plot_frame_audioplayer_callback, a, videoData, params.hAudioTrace, imObjs};
+a.TimerFcn = {@plot_frame_audioplayer_callback, videoData, params.hAudioTrace, imObjs};
 delete(findobj(params.hCalls,'Tag','CallMarker'));
 plot(params.hCalls,mean(params.eventpos(:,call_k)),1.1,'vk','MarkerFaceColor','k','Tag','CallMarker');
 
@@ -414,22 +412,22 @@ nBehaviors = length(call_info(call_k).behaviors);
 % Play button with text Start/Pause/Continue
 
 controlPanel = uipanel(params.hFig,'unit','normalized','Title','Control Panel',...
-    'Position',[0.05 0.91 0.45 0.075],'tag','controls');
+    'Position',[0.05 0.91 0.45 0.075],'Tag','controls');
 
 uicontrol(controlPanel,'unit','normalized','style','pushbutton','string','Start',...
-    'position',[0.01 0.1 0.1 0.9],'tag','startButton',...
+    'position',[0.01 0.1 0.1 0.9],'Tag','startButton',...
     'callback',{@playCallback,params});
 
 uicontrol(controlPanel,'unit','normalized','style','pushbutton','string','Stop',...
-    'position',[0.13 0.1 0.1 0.9],'tag','stopButton',...
+    'position',[0.13 0.1 0.1 0.9],'Tag','stopButton',...
     'callback',{@playCallback,params});
 
 uicontrol(controlPanel,'unit','normalized','style','pushbutton','string','Seek',...
-    'position',[0.25 0.1 0.1 0.9],'tag','seekButton',...
+    'position',[0.25 0.1 0.1 0.9],'Tag','seekButton',...
     'callback',{@seekCallback,params});
 
 uicontrol(controlPanel,'unit','normalized','style','pushbutton','string','Next',...
-    'position',[0.37 0.1 0.1 0.9],'tag','loadNextFile','callback', ...
+    'position',[0.37 0.1 0.1 0.9],'Tag','loadNextFile','callback', ...
     {@nextVideoCallback,params,audio_dir,event_pos_data,frame_ts_info,call_k,allBehaviorList});
 
 uicontrol(controlPanel,'unit','normalized','style','pushbutton','string','Return Data',...
@@ -447,7 +445,7 @@ uicontrol(controlPanel,'unit','normalized','style','pushbutton','string','Save V
 
 
 vocalizationPanel = uipanel(params.hFig,'unit','normalized','Title','Vocalization Panel',...
-    'Position',[0.02 0.5 0.076 0.35],'tag','vocalization');
+    'Position',[0.02 0.5 0.076 0.35],'Tag','vocalization');
 
 involvedString = call_info(call_k).batsInvolved;
 
@@ -481,55 +479,71 @@ eventpos = num2cell(round(params.eventpos),1);
 
 uicontrol(params.hFig,'unit','normalized','style','popupmenu','string',...
     cellfun(@(x,y) [x ': ' num2str(mean(y)) ' min'],callNumbers,eventpos,'UniformOutput',0),...
-    'position',[0.02,0.4,0.05,0.05],'tag','loadNextAudioFile',...
+    'position',[0.02,0.4,0.05,0.05],'Tag','loadNextAudioFile',...
     'value',call_k,'callback',...
     {@nextVideoCallback,params,audio_dir,event_pos_data,frame_ts_info,call_k,allBehaviorList});
 
-uicontrol(params.hFig,'unit','normalize','style','slider','Min',1,'Max',...
+playbackPanel = uipanel(params.hFig,'unit','normalized','Title','Playback Panel',...
+    'Position',[0.51 0.91 0.45 0.075],'Tag','controls');
+
+uicontrol(playbackPanel,'unit','normalize','style','slider','Min',1,'Max',...
     20,'Value',playbackSpeed,'SliderStep',[0.1 0.2],'position',...
-    [0.5,0.91,0.1,0.05],'tag','playbackSpeed','callback',...
+    [0,0,0.15,0.55],'Tag','playbackSpeed','callback',...
     {@updatePlaybackSpeed,params})
 
-uicontrol('Style','text','units','normalized','position',...
-    [0.5 0.965 0.1 0.025],'tag','playback_speed_text','String',...
+uicontrol(playbackPanel,'Style','text','units','normalized','position',...
+    [0.01 0.75 0.15 0.25],'Tag','playback_speed_text','String',...
     ['Playback speed: 1/' num2str(round(playbackSpeed*10)/10) 'x']);
 
-uicontrol(params.hFig,'unit','normalize','style','slider','Min',0.1,'Max',...
+uicontrol(playbackPanel,'unit','normalize','style','slider','Min',0.1,'Max',...
     2,'Value',callOffset,'SliderStep',[0.05 0.1],'position',...
-    [0.625,0.91,0.1,0.05],'tag','callOffset','callback',...
+    [0.175,0,0.15,0.55],'Tag','callOffset','callback',...
     {@updateCallOffset,params,audio_dir,event_pos_data,frame_ts_info,call_k,allBehaviorList})
 
-uicontrol('Style','text','units','normalized','position',...
-    [0.625 0.965 0.1 0.025],'tag','call_offset_text','String',...
+uicontrol(playbackPanel,'Style','text','units','normalized','position',...
+    [0.175 0.75 0.15 0.25],'Tag','call_offset_text','String',...
     ['Call offset: ' num2str(round(callOffset*10)/10) ' s']);
 
-uicontrol(params.hFig,'unit','normalize','style','slider','Min',-2,'Max',...
+uicontrol(playbackPanel,'unit','normalize','style','slider','Min',-2,'Max',...
     2,'Value',timeOffset,'SliderStep',[0.05 0.1],'position',...
-    [0.75,0.91,0.1,0.05],'tag','timeOffset','callback',...
+    [0.35,0,0.15,0.55],'Tag','timeOffset','callback',...
     {@updateTimeOffset,params,audio_dir,event_pos_data,frame_ts_info,call_k,allBehaviorList})
 
-uicontrol('Style','text','units','normalized','position',...
-    [0.75 0.965 0.1 0.025],'tag','time_offset_text','String',...
-    ['Call offset: ' num2str(round(timeOffset*10)/10) ' s']);
+uicontrol(playbackPanel,'Style','text','units','normalized','position',...
+    [0.35 0.75 0.15 0.25],'Tag','time_offset_text','String',...
+    ['Time offset: ' num2str(round(timeOffset*10)/10) ' s']);
 
-uicontrol(params.hFig,'unit','normalize','style','slider','Min',0,'Max',...
+uicontrol(playbackPanel,'unit','normalize','style','slider','Min',0,'Max',...
     0.25,'Value',imageContrast,'SliderStep',[0.01 0.1],'position',...
-    [0.875,0.91,0.1,0.05],'tag','imageContrast','callback',...
+    [0.525,0,0.15,0.55],'Tag','imageContrast','callback',...
     {@updateContrast,params,audio_dir,event_pos_data,frame_ts_info,call_k,allBehaviorList})
 
-uicontrol('Style','text','units','normalized','position',...
-    [0.875 0.965 0.1 0.025],'tag','image_contrast_text','String',...
+uicontrol(playbackPanel,'Style','text','units','normalized','position',...
+    [0.525 0.75 0.15 0.25],'Tag','image_contrast_text','String',...
     ['Image contrast: ' num2str(round(imageContrast*100)/100)]);
 
+% Frame by frame controls
+uicontrol(playbackPanel,'unit','normalized','style','pushbutton','string','<<',...
+    'position',[0.7 0.1 0.75 0.9],'Tag','jumpBackFrames',...
+    'callback',{@playCallback,params});
+uicontrol(playbackPanel,'unit','normalized','style','pushbutton','string','<',...
+    'position',[0.775 0.1 0.75 0.9],'Tag','prevFrame',...
+    'callback',{@playCallback,params});
+uicontrol(playbackPanel,'unit','normalized','style','pushbutton','string','>',...
+    'position',[0.85 0.1 0.75 0.9],'Tag','nextFrame',...
+    'callback',{@playCallback,params});
+uicontrol(playbackPanel,'unit','normalized','style','pushbutton','string','>>',...
+    'position',[0.925 0.1 0.75 0.9],'Tag','jumpAheadFrames',...
+    'callback',{@playCallback,params});
 
 behaviorPanel = uipanel(params.hFig,'unit','normalized','Title',...
-    'Behavior Panel','Position',[0.02 0.025 0.15 0.15],'tag','behavior');
+    'Behavior Panel','Position',[0.02 0.025 0.15 0.15],'Tag','behavior');
 
 for b = 1:nBehaviors
     position = [0.01 + (1/nBehaviors)*(b-1),0.05,(1/nBehaviors)-0.01,0.9];
     
     subBehaviorPanel = uipanel(behaviorPanel,'unit','normalized','Title',...
-        ['Behavior #' num2str(b)],'Position',position,'tag','behavior',...
+        ['Behavior #' num2str(b)],'Position',position,'Tag','behavior',...
         'UserData',b);
     
     behaviorString = call_info(call_k).behaviors{b};
@@ -548,7 +562,7 @@ for b = 1:nBehaviors
     
     bgGrouping = uibuttongroup(subBehaviorPanel,'Position',[0 0.25 1 0.2],...
         'SelectionChangedFcn',{@updateCallInfoCallback,params,call_k},...
-        'tag','behavior');
+        'Tag','behavior');
     uicontrol(bgGrouping,'unit','normalized','Style','radiobutton','String',...
         'Grouped','position',[0 0 0.5 1],'value',batIdentityValues(1));
     uicontrol(bgGrouping,'unit','normalized','Style','radiobutton','String',...
@@ -567,16 +581,32 @@ currentSample = round(currentFrame * (params.audio_fs/params.video_fs));
 
 switch hObject.String
     
+    case {'>','>>','<','<<'}
+        switch hObject.String
+            case '>'
+                currentFrame = currentFrame + 1;
+            case '>>'
+                currentFrame = currentFrame + 5;
+            case '<'
+                currentFrame = max(currentFrame - 1,1);
+            case '<<'
+                currentFrame = max(currentFrame - 5,1);
+        end
+        a.UserData = currentFrame;
+        a.TimerFcn{1}([],a.TimerFcn{2:end})
+        
+        setappdata(params.hFig,'currentFrame',currentFrame)
+        setappdata(params.hFig,'a',a);
     case 'Start'
         setappdata(params.hFig,'isPlayingVideo',1)
-        plot(params.hAudioTrace,[currentSample currentSample], [-1 1],'k','tag','audioMarker');
+        plot(params.hAudioTrace,[currentSample currentSample], [-1 1],'k','Tag','audioMarker');
         hObject.String = 'Pause';
         a.play(currentSample);
     case 'Continue'
         hObject.String = 'Pause';
         a.resume
-        delete(findobj('tag','audioMarker'));
-        plot(params.hAudioTrace,[currentSample currentSample], [-1 1],'k','tag','audioMarker');
+        delete(findobj('Tag','audioMarker'));
+        plot(params.hAudioTrace,[currentSample currentSample], [-1 1],'k','Tag','audioMarker');
     case 'Pause'
         hObject.String = 'Continue';
         setappdata(params.hFig,'isPlayingVideo',0)
@@ -589,12 +619,12 @@ switch hObject.String
         a.UserData = 1;
         setappdata(params.hFig,'startAudio',0)
         setappdata(params.hFig,'a',a);
-        delete(findobj('tag','audioMarker'));
+        delete(findobj('Tag','audioMarker'));
 end
 
 % When video reaches the end of file, display "Start" on the
 % play button.
-if currentFrame >= params.nFrames
+if currentFrame >= params.nFrames && ~strcmp(hObject.String,{'>','>>','<','<<'})
     try
         hObject.String = 'Start';
     catch err
@@ -628,7 +658,7 @@ drawnow;
 
 [audioData,videoData,params,success] = loadNextCall(event_pos_data,frame_ts_info,params);
 if success
-    hStartButton = findobj(params.hFig.Children,'tag','startButton');
+    hStartButton = findobj(params.hFig.Children,'Tag','startButton');
     set(hStartButton,'String','Start');
     initMovie(videoData,audioData,params,audio_dir,event_pos_data,frame_ts_info,allBehaviorList);
 else
@@ -770,7 +800,7 @@ if ~(a.isplaying)
     setappdata(params.hFig,'playbackSpeed',hObject.Value);
     setappdata(params.hFig,'a',a);
     
-    textH = findobj(params.hFig,'tag','playback_speed_text');
+    textH = findobj(params.hFig,'Tag','playback_speed_text');
     textH.String = ['Playback speed: 1/' num2str(round(hObject.Value*10)/10) 'x'];
     
 else
@@ -784,7 +814,7 @@ end
 function updateContrast(hObject,~,params,audio_dir,event_pos_data,frame_ts_info,call_k,allBehaviorList)
 
 setappdata(params.hFig,'imageContrast',hObject.Value);
-textH = findobj(params.hFig,'tag','image_contrast_text');
+textH = findobj(params.hFig,'Tag','image_contrast_text');
 textH.String = ['Image contrast: ' num2str(round(hObject.Value*100)/100)];
 
 nextVideoCallback(hObject,[],params,audio_dir,event_pos_data,frame_ts_info,call_k,allBehaviorList)
@@ -794,7 +824,7 @@ end
 function updateTimeOffset(hObject,~,params,audio_dir,event_pos_data,frame_ts_info,call_k,allBehaviorList)
 
 setappdata(params.hFig,'timeOffset',hObject.Value);
-textH = findobj(params.hFig,'tag','time_offset_text');
+textH = findobj(params.hFig,'Tag','time_offset_text');
 textH.String = ['Call offset: ' num2str(round(hObject.Value*10)/10) ' s'];
 
 nextVideoCallback(hObject,[],params,audio_dir,event_pos_data,frame_ts_info,call_k,allBehaviorList)
@@ -804,14 +834,14 @@ end
 function updateCallOffset(hObject,~,params,audio_dir,event_pos_data,frame_ts_info,call_k,allBehaviorList)
 
 setappdata(params.hFig,'callOffset',hObject.Value);
-textH = findobj(params.hFig,'tag','call_offset_text');
+textH = findobj(params.hFig,'Tag','call_offset_text');
 textH.String = ['Call offset: ' num2str(round(hObject.Value*10)/10) ' s'];
 
 nextVideoCallback(hObject,[],params,audio_dir,event_pos_data,frame_ts_info,call_k,allBehaviorList)
 
 end
 
-function plot_frame_audioplayer_callback(~,~,player,videoData,audioMarker,imObj)
+function plot_frame_audioplayer_callback(player,~,videoData,audioAxis,imObj)
 
 for v = 1:length(videoData)
     frame_k = min(size(videoData{v},3),player.UserData);
@@ -821,11 +851,15 @@ for v = 1:length(videoData)
 end
 player.UserData = frame_k + 1;
 
-x = player.CurrentSample;
+currentSample = max(player.CurrentSample,round(frame_k/player.TimerPeriod));
 
 % plot the new marker
-h = findobj(audioMarker,'Tag','audioMarker');
-h.XData = repmat(x,1,2);
+h = findobj(audioAxis,'Tag','audioMarker');
+if ~isempty(h)
+    h(1).XData = repmat(currentSample,1,2);
+else
+    plot(audioAxis,repmat(currentSample,1,2), [-1 1],'k','Tag','audioMarker');
+end
 
 end
 
@@ -836,7 +870,7 @@ if obj.CurrentSample == 1
     setappdata(params.hFig,'isPlayingVideo',0)
     set(findobj('Tag','startButton'),'String','Start');
     setappdata(params.hFig,'startAudio',0)
-    delete(findobj('tag','audioMarker'));
+    delete(findobj('Tag','audioMarker'));
     obj.UserData = 1;
 end
 
@@ -864,7 +898,7 @@ exp_dir_file_parts = strsplit(params.exp_dir,'\');
 for v_k = 1:params.nVideo
     video_clip_fname = ['clip_' exp_dir_file_parts{end} '_call_' num2str(appData.call_k) '_camera_' num2str(v_k) '.mp4'];
     video_clip_fname = fullfile(video_clip_dir,video_clip_fname);
-    videoData = appData.a.TimerFcn{3}{v_k};
+    videoData = appData.a.TimerFcn{2}{v_k};
     v = VideoWriter(video_clip_fname,'MPEG-4');
     v.FrameRate = round(params.video_fs/appData.playbackSpeed);
     open(v)
