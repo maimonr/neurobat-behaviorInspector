@@ -577,7 +577,7 @@ function playCallback(hObject,~,params)
 
 a = getappdata(params.hFig,'a');
 currentFrame = getappdata(params.hFig,'currentFrame');
-currentSample = round(currentFrame * (params.audio_fs/params.video_fs));
+currentSample = max(1,round((currentFrame - 1) * (params.audio_fs/params.video_fs)));
 
 switch hObject.String
     
@@ -592,13 +592,14 @@ switch hObject.String
             case '<<'
                 currentFrame = max(currentFrame - 5,1);
         end
-        a.UserData = currentFrame;
-        a.TimerFcn{1}([],a.TimerFcn{2:end})
         
+        plot_frame_step(currentFrame,a.timerFc{2:end},currentSample)
+        a.UserData = currentFrame;
         setappdata(params.hFig,'currentFrame',currentFrame)
         setappdata(params.hFig,'a',a);
     case 'Start'
         setappdata(params.hFig,'isPlayingVideo',1)
+        delete(findobj('Tag','audioMarker'));
         plot(params.hAudioTrace,[currentSample currentSample], [-1 1],'k','Tag','audioMarker');
         hObject.String = 'Pause';
         a.play(currentSample);
@@ -610,6 +611,8 @@ switch hObject.String
     case 'Pause'
         hObject.String = 'Continue';
         setappdata(params.hFig,'isPlayingVideo',0)
+        currentFrame = round(a.CurrentSample * (params.video_fs/params.audio_fs));
+        setappdata(params.hFig,'currentFrame',currentFrame)
         a.pause
     case 'Stop'
         setappdata(params.hFig,'currentFrame',1)
@@ -851,7 +854,7 @@ for v = 1:length(videoData)
 end
 player.UserData = frame_k + 1;
 
-currentSample = max(player.CurrentSample,round(frame_k/player.TimerPeriod));
+currentSample = player.CurrentSample;
 
 % plot the new marker
 h = findobj(audioAxis,'Tag','audioMarker');
@@ -859,6 +862,24 @@ if ~isempty(h)
     h(1).XData = repmat(currentSample,1,2);
 else
     plot(audioAxis,repmat(currentSample,1,2), [-1 1],'k','Tag','audioMarker');
+end
+
+end
+
+function plot_frame_step(frame_k,videoData,audioAxis,imObj,current_audio_sample)
+
+for v = 1:length(videoData)
+    frame_k = min(size(videoData{v},3),frame_k);
+    if ~isempty(videoData{v})
+        set(imObj{v}, 'CData', videoData{v}(:,:,frame_k));
+    end
+end
+% plot the new marker
+h = findobj(audioAxis,'Tag','audioMarker');
+if ~isempty(h)
+    h(1).XData = repmat(current_audio_sample,1,2);
+else
+    plot(audioAxis,repmat(current_audio_sample,1,2), [-1 1],'k','Tag','audioMarker');
 end
 
 end
