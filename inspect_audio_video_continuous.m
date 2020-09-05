@@ -138,7 +138,8 @@ switch exp_type
         call_info_fname = fullfile(audio_dir, ['call_info_' params.bat_str '_' params.exp_date '.mat']);
         call_info = struct('eventpos',num2cell(vertcat(event_pos_data.file_event_pos),2),...
             'corrected_eventpos',num2cell(vertcat(event_pos_data.corrected_eventpos),2),...
-            'batsInvolved',[],'behaviors',repmat({cell(1,nBehaviors)},length(event_pos_data),1));
+            'batsInvolved',[],'behaviors',repmat({cell(1,nBehaviors)},length(event_pos_data),1),...
+            'behaviorTime',repmat({cell(1,nBehaviors)},length(event_pos_data),1));
         params.timestamps_string = 'nlg';
         
         params.eventpos = 1e-3*(vertcat(event_pos_data.corrected_eventpos)- frame_ts_info{v}.timestamps_nlg(1))'/60; % call position in minutes
@@ -291,23 +292,19 @@ try
         
         vidObj{v} = VideoReader(Path2Video_new);
         video_fs(v) = vidObj{v}.FrameRate;
-        frame_offset = round(video_fs(v)*(callOffset));
-        startFrame = first_call_frame_idx(v) - frame_offset;
-        if startFrame <= 0
+        frame_offset = round(video_fs(v)*callOffset);
+        time_offset = round(video_fs(v)*timeOffset);
+        
+        callFrame = frame_ts_info{v}.file_frame_number(first_call_frame_idx(v));
+        frameIdx = time_offset + [callFrame-frame_offset callFrame+frame_offset];
+        
+        if frameIdx(1) <= 0
            disp('Frame index less than 0. Continuing to next event')
            continue
         end
-        try
-            vidObj{v}.CurrentTime = timeOffset + frame_ts_info{v}.file_frame_number(startFrame)/video_fs(v);
-        catch err
-            if strcmp(err.identifier,'MATLAB:set:notLessEqual')
-                warning('Current video time greater than video length')
-            else
-                rethrow(err)
-            end
-        end
-        endTime = timeOffset + frame_ts_info{v}.file_frame_number(first_call_frame_idx(v) + frame_offset)/video_fs(v);
-        nFrames = ceil((endTime - vidObj{v}.CurrentTime)*video_fs(v));
+        
+        frameIdx(2) = min(round(vidObj{v}.Duration*vidObj{v}.FrameRate)-1,frameIdx(2));
+        nFrames = diff(frameIdx)+1;
         video_frame_size = [vidObj{v}.Height,vidObj{v}.Width];
         downsampleFactor = 2;
         if video_frame_size(1) > 512
@@ -317,20 +314,21 @@ try
             downsampleFlag = false;
         end
         videoData{v} = zeros(video_frame_size(1),video_frame_size(2),nFrames,'uint8');
-        k = 1;
-        while vidObj{v}.CurrentTime <= timeOffset + frame_ts_info{v}.file_frame_number(first_call_frame_idx(v) + frame_offset)/video_fs(v)
-            temp = readFrame(vidObj{v});
-            temp = temp(:,:,1);
-            if downsampleFlag
-                temp = temp(1:downsampleFactor:vidObj{v}.Height,1:downsampleFactor:vidObj{v}.Width);
-            end
-            if imageContrast > 0
-                videoData{v}(:,:,k) = adapthisteq(temp,'ClipLimit',imageContrast,'NumTiles',[8 8]);
-            else
-                videoData{v}(:,:,k) = temp;
-            end
-            k = k + 1;
+        frameData = read(vidObj{v},frameIdx);
+        frameData = squeeze(frameData(:,:,1,:));
+        
+        if downsampleFlag
+            frameData = frameData(1:downsampleFactor:vidObj{v}.Height,1:downsampleFactor:vidObj{v}.Width,:);
         end
+        
+        if imageContrast > 0
+            for frame_k = 1:nFrames
+                videoData{v}(:,:,frame_k) = adapthisteq(frameData(:,:,frame_k),'ClipLimit',imageContrast,'NumTiles',[8 8]);
+            end
+        else
+            videoData{v} = frameData;
+        end
+
     end
     params.video_fs = mean(video_fs);
     params.nFrames = min(cellfun(@(x) size(x,3),videoData));
@@ -524,16 +522,16 @@ uicontrol(playbackPanel,'Style','text','units','normalized','position',...
 
 % Frame by frame controls
 uicontrol(playbackPanel,'unit','normalized','style','pushbutton','string','<<',...
-    'position',[0.7 0.1 0.75 0.9],'Tag','jumpBackFrames',...
+    'position',[0.7 0.1 0.1 0.9],'Tag','jumpBackFrames',...
     'callback',{@playCallback,params});
 uicontrol(playbackPanel,'unit','normalized','style','pushbutton','string','<',...
-    'position',[0.775 0.1 0.75 0.9],'Tag','prevFrame',...
+    'position',[0.775 0.1 0.1 0.9],'Tag','prevFrame',...
     'callback',{@playCallback,params});
 uicontrol(playbackPanel,'unit','normalized','style','pushbutton','string','>',...
-    'position',[0.85 0.1 0.75 0.9],'Tag','nextFrame',...
+    'position',[0.85 0.1 0.1 0.9],'Tag','nextFrame',...
     'callback',{@playCallback,params});
 uicontrol(playbackPanel,'unit','normalized','style','pushbutton','string','>>',...
-    'position',[0.925 0.1 0.75 0.9],'Tag','jumpAheadFrames',...
+    'position',[0.925 0.1 0.1 0.9],'Tag','jumpAheadFrames',...
     'callback',{@playCallback,params});
 
 behaviorPanel = uipanel(params.hFig,'unit','normalized','Title',...
@@ -555,14 +553,19 @@ for b = 1:nBehaviors
         behaviorValue = 1;
         batIdentityValues = zeros(1,2);
     end
+
+    bhvTime = round(call_info(call_k).behaviorTime{b} - call_info(call_k).corrected_eventpos(1));
+    uicontrol(subBehaviorPanel,'unit','normalized','style','pushbutton','string',...
+        ['Time relative to call: ' num2str(bhvTime) 'ms'],'position',[0.01 0.6 0.9 0.3],...
+        'callback',{@updateCallInfoCallback,params,call_k},'Tag','behaviorTime');
     
     uicontrol(subBehaviorPanel,'unit','normalized','style','popupmenu','string',...
         [{''} allBehaviorList],'position',[0.01 0.1 0.9 0.15],'value',behaviorValue,...
-        'callback',{@updateCallInfoCallback,params,call_k});
+        'callback',{@updateCallInfoCallback,params,call_k},'Tag','bhvType');
     
     bgGrouping = uibuttongroup(subBehaviorPanel,'Position',[0 0.25 1 0.2],...
         'SelectionChangedFcn',{@updateCallInfoCallback,params,call_k},...
-        'Tag','behavior');
+        'Tag','bhvGroup');
     uicontrol(bgGrouping,'unit','normalized','Style','radiobutton','String',...
         'Grouped','position',[0 0 0.5 1],'value',batIdentityValues(1));
     uicontrol(bgGrouping,'unit','normalized','Style','radiobutton','String',...
@@ -695,14 +698,19 @@ switch hObject.Parent.Tag
         behaviorNum = hObject.Parent.UserData;
         behaviorUIObjs = hObject.Parent.Children;
         behaviorString = '';
-        for obj = 1:length(behaviorUIObjs)
-            switch behaviorUIObjs(obj).Type
-                case 'uibuttongroup'
-                    behaviorString = [behaviorUIObjs(obj).SelectedObject.String '-' behaviorString];
+        behavior_str_component_tags = {'bhvType','bhvGroup'};
+        for bhvTags = behavior_str_component_tags
+            obj = findobj(hObject.Parent,'Tag',bhvTags{1});
+            if isempty(obj)
+                continue
+            end
+            switch bhvTags{1}
+                case 'bhvGroup'
+                    behaviorString = [obj.SelectedObject.String '-' behaviorString];
                     
-                case 'uicontrol'
-                    if ~isempty(behaviorUIObjs(obj).String{behaviorUIObjs(obj).Value})
-                        behaviorString = [behaviorString behaviorUIObjs(obj).String{behaviorUIObjs(obj).Value}];
+                case 'bhvType'
+                    if ~isempty(obj.String{obj.Value})
+                        behaviorString = [behaviorString obj.String{obj.Value}];
                     else
                         behaviorString = '';
                         break
@@ -712,6 +720,14 @@ switch hObject.Parent.Tag
         end
         
         call_info(call_k).behaviors{behaviorNum} = behaviorString;
+        
+        if strcmp(hObject.Tag,'behaviorTime')
+            currentFrame = getappdata(params.hFig,'currentFrame');
+            callOffset = 1e3*getappdata(params.hFig,'callOffset');
+            call_info(call_k).behaviorTime{behaviorNum} = call_info(call_k).corrected_eventpos(1) - callOffset + 1e3*(currentFrame/params.video_fs);
+            bhvTime = round(call_info(call_k).behaviorTime{behaviorNum} - call_info(call_k).corrected_eventpos(1));
+            hObject.String = ['Time relative to call: ' num2str(bhvTime) 'ms'];
+        end
         
 end
 
@@ -746,7 +762,11 @@ catch
     end
 end
 
-
+if ~isfield(call_info,'behaviorTime')
+    nBehaviors = length(call_info(1).behaviors);
+    [call_info.behaviorTime] = deal(cell(1,nBehaviors));
+    guidata(params.hFig,call_info);
+end
 
 end
 
