@@ -1,8 +1,8 @@
 function inspect_audio_video_continuous(exp_dir,varargin)
 
-pnames = {'exp_type','bat_str','exp_date','event_pos_data','onlyBouts','sessionType'};
-dflts  = {'adult','bat',date,[],true,'communication'};
-[exp_type,bat_str,exp_date,event_pos_data,only_bout_flag,sessionType] = internal.stats.parseArgs(pnames,dflts,varargin{:});
+pnames = {'exp_type','bat_str','event_pos_data','onlyBouts','sessionType'};
+dflts  = {'adult','bat',[],true,'communication'};
+[exp_type,bat_str,event_pos_data,only_bout_flag,sessionType] = internal.stats.parseArgs(pnames,dflts,varargin{:});
 
 h = figure;
 call_k = 1;
@@ -10,8 +10,8 @@ overlayObjs = [];
 useColor = false;
 exp_dir = strip(exp_dir,filesep);
 exp_dir_split = strsplit(exp_dir,filesep);
-exp_date_str = exp_dir_split{end};
-expDate = datetime(exp_date_str,'InputFormat','MMddyyyy');
+expDate = datetime(exp_dir_split{end},'InputFormat','MMddyyyy');
+exp_date_str = datestr(expDate,'dd-mmm-yyyy');
 baseDir = fullfile(exp_dir_split{1:end-1});
 call_data_dir = fullfile(baseDir,'call_data');
 bhvDir = fullfile(baseDir,'bhv_data');
@@ -55,9 +55,9 @@ hCalls = axes('Units','Normalized','Position',[0.2 0.075 0.65 0.075]);
 
 params = struct('audio_fs',250e3,'video_fs',[],'nFrames',[],'nVideo',nVideo,...
     'hAudioTrace',hAudioTrace,'hMovie',hMovie,'hFig',h,'hCalls',hCalls,...
-    'bat_str',bat_str,'exp_date',exp_date,'exp_type',exp_type,'exp_dir',exp_dir,...
+    'bat_str',bat_str,'exp_date',exp_date_str,'exp_type',exp_type,'exp_dir',exp_dir,...
     'eventpos',[],'timestamps_string',[],'useOverlay',useOverlay,...
-    'overlayObjs',overlayObjs,'useColor',useColor);
+    'overlayObjs',overlayObjs,'useColor',useColor,'call_info_fname',[]);
 
 setappdata(params.hFig,'currentFrame',1);
 setappdata(params.hFig,'startAudio',0);
@@ -175,6 +175,7 @@ switch exp_type
         
         params.eventpos = 1e-3*(vertcat(event_pos_data.corrected_eventpos)- frame_ts_info{v_k}.timestamps_nlg(1))'/60; % call position in minutes
 end
+params.call_info_fname = call_info_fname;
 
 if isfield(event_pos_data,'uniqueID')
     [call_info.callID] = event_pos_data.uniqueID;
@@ -310,6 +311,7 @@ try
     params.nFrames = min(cellfun(@(x) size(x,ndims(x)),videoData));
     
     if params.useOverlay
+        waitbar(0,hWait,'Loading overlay data');
         downsampleFactor = 1;
         overlaid_video_data = cell(1,nVideo);
         for v = 1:nVideo
@@ -433,10 +435,21 @@ if video_frame_size(1) > 1e4
 else
     downsampleFlag = false;
 end
-videoData = zeros(video_frame_size(1),video_frame_size(2),nFrames,'uint8');
-frameData = read(vidObj,frameIdx);
-if ~useColor
-   frameData = squeeze(frameData(:,:,1,:)); 
+
+frameData = zeros(video_frame_size(1),video_frame_size(2),3,nFrames,'uint8');
+
+vidObj.CurrentTime = frameIdx(1)/vidObj.FrameRate;
+for k = 1:nFrames
+    frameData(:,:,:,k) = readFrame(vidObj);
+end
+
+if useColor
+    vidIdxs = repmat({':'},1,3);
+    video_data_size = {video_frame_size(1),video_frame_size(2),3,nFrames};
+else
+    vidIdxs = repmat({':'},1,2);
+    video_data_size = {video_frame_size(1),video_frame_size(2),nFrames};
+    frameData = squeeze(frameData(:,:,1,:));
 end
 
 if downsampleFlag
@@ -444,8 +457,9 @@ if downsampleFlag
 end
 
 if imageContrast > 0
+    videoData = zeros(video_data_size{:},'uint8');
     for frame_k = 1:nFrames
-        videoData(:,:,frame_k) = adapthisteq(frameData(:,:,frame_k),'ClipLimit',imageContrast,'NumTiles',[8 8]);
+        videoData(vidIdxs{:},frame_k) = adapthisteq(frameData(:,:,frame_k),'ClipLimit',imageContrast,'NumTiles',[8 8]);
     end
 else
     videoData = frameData;
