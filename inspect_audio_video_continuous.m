@@ -4,19 +4,60 @@ pnames = {'exp_type','bat_str','exp_date','event_pos_data','onlyBouts','sessionT
 dflts  = {'adult','bat',date,[],true,'communication'};
 [exp_type,bat_str,exp_date,event_pos_data,only_bout_flag,sessionType] = internal.stats.parseArgs(pnames,dflts,varargin{:});
 
-nVideo = 2;
 h = figure;
 call_k = 1;
+overlayObjs = [];
+useColor = false;
+exp_dir = strip(exp_dir,filesep);
+exp_dir_split = strsplit(exp_dir,filesep);
+exp_date_str = exp_dir_split{end};
+expDate = datetime(exp_date_str,'InputFormat','MMddyyyy');
+baseDir = fullfile(exp_dir_split{1:end-1});
+call_data_dir = fullfile(baseDir,'call_data');
+bhvDir = fullfile(baseDir,'bhv_data');
+switch exp_type
+    case {'adult','adult_operant'}
+        nVideo = 2;
+        useOverlay = false;
+        overlay_dir_strs = {};
+        camStrs = {'Camera 1','Camera 2'};
+        switch exp_type
+            case 'adult'
+                cam_dir_strs = {'video',sessionType};
+            case 'adult_operant'
+                cam_dir_strs = {'video'};
+        end
+        event_pos_fname_str = 'cut_call_data';
+    case 'adult_social'
+        switch sessionType
+            case 'social' % vocal session not implemented yet
+                nVideo = 1;
+                useOverlay = true;
+                camStrs = {'infrared'};
+                cam_dir_strs = {'video',sessionType,'infrared'};
+                overlay_dir_strs = {'video',sessionType,'color'};
+                overlay_cam_strs = {'color'};
+                overlayObjs = load('IRtoColor_Regist_obejcts','Rfixed','t');
+                useColor = true;
+                event_pos_fname_str = 'cut_call_data_social';
+        end
+end
 
 hAudioTrace = axes('Units','Normalized','Position',[0.13 0.175 0.775 0.15]);
-hMovie = [axes('Units','Normalized','Position',[0.15 0.33 0.335 0.56]),...
-    axes('Units','Normalized','Position',[0.575 0.33 0.335 0.56])];
+switch nVideo
+    case 1
+        hMovie = axes('Units','Normalized','Position',[0.15 0.33 0.76 0.56]);
+    case 2
+        hMovie = [axes('Units','Normalized','Position',[0.15 0.33 0.335 0.56]),...
+            axes('Units','Normalized','Position',[0.575 0.33 0.335 0.56])];
+end
 hCalls = axes('Units','Normalized','Position',[0.2 0.075 0.65 0.075]);
 
 params = struct('audio_fs',250e3,'video_fs',[],'nFrames',[],'nVideo',nVideo,...
     'hAudioTrace',hAudioTrace,'hMovie',hMovie,'hFig',h,'hCalls',hCalls,...
     'bat_str',bat_str,'exp_date',exp_date,'exp_type',exp_type,'exp_dir',exp_dir,...
-    'eventpos',[],'timestamps_string',[]);
+    'eventpos',[],'timestamps_string',[],'useOverlay',useOverlay,...
+    'overlayObjs',overlayObjs,'useColor',useColor);
 
 setappdata(params.hFig,'currentFrame',1);
 setappdata(params.hFig,'startAudio',0);
@@ -29,41 +70,31 @@ setappdata(params.hFig,'timeOffset',0);
 setappdata(params.hFig,'imageContrast',0);
 setappdata(params.hFig,'call_k',call_k)
 
-video_files = cell(1,nVideo);
-video_metadata_files = cell(1,nVideo);
-video_dirs = cell(1,nVideo);
-frame_ts_info = cell(1,nVideo);
-for v = 1:nVideo
-    
-    video_dirs{v} = fullfile(exp_dir, 'video');
-    video_files{v} = dir(fullfile(video_dirs{v},'**',['Camera ' num2str(v) '*.mp4']));
-    video_files{v} = {video_files{v}.name};
-    video_metadata_files{v} = dir(fullfile(video_dirs{v},'**',['Camera ' num2str(v) '*.ts.csv']));
-    video_metadata_files{v} = {video_metadata_files{v}.name};
-    frame_ts_fname = dir(fullfile(video_dirs{v},'**','*frame_timestamps_info.mat'));
-    frame_ts_fname = frame_ts_fname(contains({frame_ts_fname.name},'camera','IgnoreCase',false) & contains({frame_ts_fname.name},num2str(v)));
+[frame_ts_info] = deal(cell(1,nVideo));
+for v_k = 1:nVideo
+    videoDir = fullfile(exp_dir,cam_dir_strs{:});
+    frame_ts_fname = dir(fullfile(videoDir,[strrep(lower(camStrs{v_k}),' ','') '*frame_timestamps_info.mat']));
     assert(length(frame_ts_fname) == 1);
     s = load(fullfile(frame_ts_fname.folder,frame_ts_fname.name));
-    frame_ts_info{v} = s.frame_ts_info;
+    frame_ts_info{v_k} = s.frame_ts_info;
+    if useOverlay
+        v_overlay = 2*v_k;
+        videoDir = fullfile(exp_dir,overlay_dir_strs{:});
+        frame_ts_fname = dir(fullfile(videoDir,[strrep(lower(overlay_cam_strs{v_k}),' ','') '*frame_timestamps_info.mat']));
+        assert(length(frame_ts_fname) == 1);
+        s = load(fullfile(frame_ts_fname.folder,frame_ts_fname.name));
+        frame_ts_info{v_overlay} = s.frame_ts_info;
+    end
 end
 
 audio_dir = fullfile(exp_dir, 'audio', sessionType, 'ch1');
 
 if isempty(event_pos_data)
-    bat_num_classification_fname = fullfile(audio_dir,'manual_al_classify_batNum.mat');
-    s = load(fullfile(audio_dir, 'cut_call_data.mat'));
+    
+    s = load(fullfile(call_data_dir, [datestr(expDate,'yyyymmdd') '_' event_pos_fname_str '.mat']));
     event_pos_data = s.cut_call_data;
     
-    if exist(bat_num_classification_fname,'file')
-        s = load(bat_num_classification_fname);
-        batNums = s.manual_al_classify_batNum;
-        if length(batNums) == length(event_pos_data)
-            batIdx = ~strcmp(batNums,'noise');
-            event_pos_data = event_pos_data(batIdx);
-            batNums = batNums(batIdx);
-            [event_pos_data.batNum] = batNums{:};
-        end
-    elseif ~any(isnan([event_pos_data.noise]))
+    if ~any(isnan([event_pos_data.noise]))
         event_pos_data = event_pos_data(~[event_pos_data.noise]);
     end
     
@@ -131,18 +162,18 @@ switch exp_type
         params.eventpos = 1e-3*vertcat(event_pos_data.corrected_eventpos)'/60; % call position in minutes
         params.timestamps_string = 'nlg';
         
-    case 'adult'
+    case {'adult','adult_social'}
         nBehaviors = 1;
         
         allBehaviorList = {'Aggression','Incidental','Probing','Spontaneous','Unclear','Other'};
-        call_info_fname = fullfile(audio_dir, ['call_info_' params.bat_str '_' params.exp_date '.mat']);
+        call_info_fname = fullfile(bhvDir, ['call_info_' params.bat_str '_' params.exp_date '.mat']);
         call_info = struct('eventpos',num2cell(vertcat(event_pos_data.file_event_pos),2),...
             'corrected_eventpos',num2cell(vertcat(event_pos_data.corrected_eventpos),2),...
             'batsInvolved',[],'behaviors',repmat({cell(1,nBehaviors)},length(event_pos_data),1),...
             'behaviorTime',repmat({cell(1,nBehaviors)},length(event_pos_data),1));
         params.timestamps_string = 'nlg';
         
-        params.eventpos = 1e-3*(vertcat(event_pos_data.corrected_eventpos)- frame_ts_info{v}.timestamps_nlg(1))'/60; % call position in minutes
+        params.eventpos = 1e-3*(vertcat(event_pos_data.corrected_eventpos)- frame_ts_info{v_k}.timestamps_nlg(1))'/60; % call position in minutes
 end
 
 if isfield(event_pos_data,'uniqueID')
@@ -247,7 +278,8 @@ imObjs = cell(1,params.nVideo);
 for s = 1:params.nVideo
     cla(params.hMovie(s))
     if ~isempty(videoData{s})
-        imObjs{s} = imshow(videoData{s}(:,:,1),'Parent',params.hMovie(s));
+        vidIdxs = repmat({':'},1,ndims(videoData{s})-1);
+        imObjs{s} = imshow(videoData{s}(vidIdxs{:},1),'Parent',params.hMovie(s));
     end
     axis(params.hMovie(s),'tight')
     axis(params.hMovie(s),'square')
@@ -260,100 +292,66 @@ plot(params.hCalls,mean(params.eventpos(:,call_k)),1.1,'vk','MarkerFaceColor','k
 end
 
 function [audioData,videoData,params,success] = loadNextCall(event_pos_data,frame_ts_info,params)
-
+hWait = waitbar(0,'Loading video data');
 call_k = getappdata(params.hFig,'call_k');
 callOffset = getappdata(params.hFig,'callOffset');
 imageContrast = getappdata(params.hFig,'imageContrast');
-timeOffset = getappdata(params.hFig,'timeOffset');
-
 try
     
     nVideo = params.nVideo;
     call_time = ((event_pos_data(call_k).corrected_eventpos(1)));
-    first_call_frame_idx = zeros(1,nVideo);
     video_fs = zeros(1,nVideo);
-    vidObj = cell(1,nVideo);
     videoData = cell(1,nVideo);
     for v = 1:nVideo
-        [~,first_call_frame_idx(v)] = min(abs(frame_ts_info{v}.(['timestamps_' params.timestamps_string])-call_time));
-        Path2Video =frame_ts_info{v}.videoFNames{frame_ts_info{v}.fileIdx(first_call_frame_idx(v))};
-        % Make sure the video path is correct
-        if isunix
-            Path2Video = strrep(Path2Video, '\', '/');
-        end
-        % find the date of the experiment
-        SepIndices = strfind(params.exp_dir, filesep);
-        if SepIndices(end)==length(params.exp_dir)
-            FolderDate = params.exp_dir(SepIndices(end-1)+1:end-1);
-        else
-            FolderDate = params.exp_dir(SepIndices(end)+1:end);
-        end
-        Path2Video_new = fullfile(params.exp_dir, Path2Video((strfind(Path2Video, FolderDate) + length(FolderDate)):end));
-        
-        vidObj{v} = VideoReader(Path2Video_new);
-        video_fs(v) = vidObj{v}.FrameRate;
-        frame_offset = round(video_fs(v)*callOffset);
-        time_offset = round(video_fs(v)*timeOffset);
-        
-        callFrame = frame_ts_info{v}.file_frame_number(first_call_frame_idx(v));
-        frameIdx = time_offset + [callFrame-frame_offset callFrame+frame_offset];
-        
-        if frameIdx(1) <= 0
-           disp('Frame index less than 0. Continuing to next event')
-           continue
-        end
-        
-        frameIdx(2) = min(round(vidObj{v}.Duration*vidObj{v}.FrameRate)-1,frameIdx(2));
-        nFrames = diff(frameIdx)+1;
-        video_frame_size = [vidObj{v}.Height,vidObj{v}.Width];
-        downsampleFactor = 2;
-        if video_frame_size(1) > 512
-            downsampleFlag = true;
-            video_frame_size = floor(video_frame_size/downsampleFactor);
-        else
-            downsampleFlag = false;
-        end
-        videoData{v} = zeros(video_frame_size(1),video_frame_size(2),nFrames,'uint8');
-        frameData = read(vidObj{v},frameIdx);
-        frameData = squeeze(frameData(:,:,1,:));
-        
-        if downsampleFlag
-            frameData = frameData(1:downsampleFactor:vidObj{v}.Height,1:downsampleFactor:vidObj{v}.Width,:);
-        end
-        
-        if imageContrast > 0
-            for frame_k = 1:nFrames
-                videoData{v}(:,:,frame_k) = adapthisteq(frameData(:,:,frame_k),'ClipLimit',imageContrast,'NumTiles',[8 8]);
-            end
-        else
-            videoData{v} = frameData;
-        end
-
+       [videoData{v},video_fs(v)] = loadVideoData(params,frame_ts_info{v},call_time,imageContrast,false);
     end
+    
     params.video_fs = mean(video_fs);
-    params.nFrames = min(cellfun(@(x) size(x,3),videoData));
+    params.nFrames = min(cellfun(@(x) size(x,ndims(x)),videoData));
+    
+    if params.useOverlay
+        downsampleFactor = 1;
+        overlaid_video_data = cell(1,nVideo);
+        for v = 1:nVideo
+            if ~isempty(videoData{v})
+                video_data_overlay = loadVideoData(params,frame_ts_info{v+nVideo},call_time,0,true);
+                imSize(1,:) = size(video_data_overlay,[1 2]);
+                imSize(2,:) = size(videoData{v},[1 2]);
+                imSize = max(imSize);
+                overlaid_video_data{v} = zeros(imSize(1)/downsampleFactor,imSize(2)/downsampleFactor,3,params.nFrames,'uint8');
+                for frame_k = 1:params.nFrames
+                    coRegFrame = imwarp(videoData{v}(:,:,frame_k),params.overlayObjs.t,'OutputView',params.overlayObjs.Rfixed);    % this does the job of co-regist the IR to fit to color.
+                    overlayFrame = 3*video_data_overlay(:,:,:,frame_k); % this is done to enhcace the colors. may need adjusting
+                    if max(imSize) > 512
+                        coRegFrame = coRegFrame(1:downsampleFactor:imSize(1),1:downsampleFactor:imSize(2),:);
+                        overlayFrame = overlayFrame(1:downsampleFactor:imSize(1),1:downsampleFactor:imSize(2),:,:);
+                    end
+                    overlaid_video_data{v}(:,:,:,frame_k) = imadjust((repmat(coRegFrame,1,1,3) + overlayFrame)/2,[0 0.5]);
+                end
+            end
+        end
+        videoData = overlaid_video_data;
+    end
+    
     if iscell(event_pos_data(call_k).fName)
         event_pos_data(call_k).fName = event_pos_data(call_k).fName{1};
         event_pos_data(call_k).f_num = event_pos_data(call_k).f_num(1);
     end
-    if isunix
-        Path2Audio_temp = fileparts(strrep(event_pos_data(call_k).fName, '\','/'));
-        Path2Audio = fullfile(params.exp_dir, Path2Audio_temp((strfind(Path2Audio_temp, FolderDate) + length(FolderDate)+1):end));
-    else
-        Path2Audio = fileparts(event_pos_data(call_k).fName);
-    end
-    Path2Audio_new = fullfile(params.exp_dir, Path2Audio((strfind(Path2Audio, FolderDate) + length(FolderDate)):end));
-    audio_files = dir([Path2Audio_new filesep 'T*.WAV']);
+    waitbar(0,hWait,'Loading audio data');
+    audio_dir_event_pos = fullfile(event_pos_data(call_k).fName);
+    exp_dir_split = strsplit(params.exp_dir,filesep);
+    audio_fname_split = strsplit(audio_dir_event_pos,filesep);
+    dateIdx = find(cellfun(@(x,y) strcmp(x,y),audio_fname_split(1:length(exp_dir_split)),exp_dir_split),1,'last');
+    audio_fname = fullfile(params.exp_dir,audio_fname_split{dateIdx+1:end});
+    audioDir = fileparts(audio_fname);
+    
+    audio_files = dir(fullfile(audioDir,'T*.WAV'));
     wav_file_nums = cellfun(@(x) str2double(x(end-7:end-4)),{audio_files.name});
     
     audio_offset = round(callOffset*params.audio_fs);
     requested_audio_samples = -audio_offset + event_pos_data(call_k).file_event_pos(1):event_pos_data(call_k).file_event_pos(1) + audio_offset;
-    if isunix
-        [~, File_local, ext] = fileparts(strrep(event_pos_data(call_k).fName, '\', '/'));
-    else
-        [~, File_local, ext] = fileparts(event_pos_data(call_k).fName);
-    end
-    base_audio_data = audioread(fullfile(Path2Audio_new, [File_local ext]));
+
+    base_audio_data = audioread(audio_fname);
     
     f_num = event_pos_data(call_k).f_num;
     while any(requested_audio_samples <= 0)
@@ -390,10 +388,68 @@ catch err
     audioData = [];
     videoData = [];
     params = [];
+    close(hWait);
     return
 end
 
 success = 1;
+close(hWait);
+end
+
+function [videoData,video_fs] = loadVideoData(params,frame_ts_info,call_time,imageContrast,useColor)
+
+timeOffset = getappdata(params.hFig,'timeOffset');
+callOffset = getappdata(params.hFig,'callOffset');
+
+[~,first_call_frame_idx] = min(abs(frame_ts_info.(['timestamps_' params.timestamps_string])-call_time));
+frame_ts_info_fname = fullfile(frame_ts_info.videoFNames{frame_ts_info.fileIdx(first_call_frame_idx)});
+exp_dir_split = strsplit(params.exp_dir,filesep);
+frame_ts_info_fname_split = strsplit(frame_ts_info_fname,filesep);
+dateIdx = find(cellfun(@(x,y) strcmp(x,y),frame_ts_info_fname_split(1:length(exp_dir_split)),exp_dir_split),1,'last');
+video_fName = fullfile(params.exp_dir,frame_ts_info_fname_split{dateIdx+1:end});
+
+vidObj = VideoReader(video_fName);
+video_fs = vidObj.FrameRate;
+frame_offset = round(video_fs*callOffset);
+time_offset = round(video_fs*timeOffset);
+
+callFrame = frame_ts_info.file_frame_number(first_call_frame_idx);
+frameIdx = time_offset + [callFrame-frame_offset callFrame+frame_offset];
+
+if frameIdx(1) <= 0
+    disp('Frame index less than 0. Continuing to next event')
+    videoData = [];
+    video_fs = NaN;
+    return
+end
+
+frameIdx(2) = min(round(vidObj.Duration*vidObj.FrameRate)-1,frameIdx(2));
+nFrames = diff(frameIdx)+1;
+video_frame_size = [vidObj.Height,vidObj.Width];
+downsampleFactor = 2;
+if video_frame_size(1) > 1e4
+    downsampleFlag = true;
+    video_frame_size = floor(video_frame_size/downsampleFactor);
+else
+    downsampleFlag = false;
+end
+videoData = zeros(video_frame_size(1),video_frame_size(2),nFrames,'uint8');
+frameData = read(vidObj,frameIdx);
+if ~useColor
+   frameData = squeeze(frameData(:,:,1,:)); 
+end
+
+if downsampleFlag
+    frameData = frameData(1:downsampleFactor:vidObj.Height,1:downsampleFactor:vidObj.Width,:,:);
+end
+
+if imageContrast > 0
+    for frame_k = 1:nFrames
+        videoData(:,:,frame_k) = adapthisteq(frameData(:,:,frame_k),'ClipLimit',imageContrast,'NumTiles',[8 8]);
+    end
+else
+    videoData = frameData;
+end
 
 end
 
@@ -432,10 +488,10 @@ uicontrol(controlPanel,'unit','normalized','style','pushbutton','string','Return
     'position',[0.49 0.1 0.1 0.9],'callback',{@returnDataCallback,params});
 
 uicontrol(controlPanel,'unit','normalized','style','pushbutton','string','Save Data',...
-    'position',[0.61 0.1 0.1 0.9],'callback',{@saveDataCallback,params,audio_dir});
+    'position',[0.61 0.1 0.1 0.9],'callback',{@saveDataCallback,params});
 
 uicontrol(controlPanel,'unit','normalized','style','pushbutton','string','Load Data',...
-    'position',[0.73 0.1 0.1 0.9],'callback',{@loadDataCallback,params,audio_dir});
+    'position',[0.73 0.1 0.1 0.9],'callback',{@loadDataCallback,params});
 
 uicontrol(controlPanel,'unit','normalized','style','pushbutton','string','Save Video',...
     'position',[0.85 0.1 0.1 0.9],'callback',{@save_video_callback,params});
@@ -660,7 +716,7 @@ switch hObject.Tag
 end
 setappdata(params.hFig,'call_k',call_k)
 set(params.hFig, 'pointer', 'watch')
-drawnow;
+drawnow();
 
 [audioData,videoData,params,success] = loadNextCall(event_pos_data,frame_ts_info,params);
 if success
@@ -735,18 +791,13 @@ guidata(params.hFig,call_info);
 end
 
 function returnDataCallback(~,~,params)
-
 call_info = guidata(params.hFig);
 assignin('base','call_info',call_info)
 end
 
-function loadDataCallback(~,~,params,audio_dir)
+function loadDataCallback(~,~,params)
+call_info_fname = params.call_info_fname;
 
-if strcmp(params.exp_type,'nlg')
-    call_info_fname = fullfile(audio_dir, ['juv_call_info_' params.bat_str '_' params.exp_date '.mat']);
-else
-    call_info_fname = fullfile(audio_dir, ['call_info_' params.bat_str '_' params.exp_date '.mat']);
-end
 try
     load(call_info_fname,'call_info');
     display(['loading existing file ' call_info_fname]);
@@ -754,8 +805,8 @@ try
     
 catch
     try
-        [call_info_fname, folder] = uigetfile([audio_dir filesep '*.mat']);
-        load([folder call_info_fname],'call_info')
+        [call_info_fname, folder] = uigetfile(fullfile(fileparts(call_info_fname),'*.mat'));
+        load(fullfile(folder,call_info_fname),'call_info')
         guidata(params.hFig,call_info);
     catch
         display(['couldn''t find' call_info_fname]);
@@ -770,13 +821,9 @@ end
 
 end
 
-function saveDataCallback(~,~,params,audio_dir)
+function saveDataCallback(~,~,params)
+call_info_fname = params.call_info_fname;
 
-if strcmp(params.exp_type,'nlg')
-    call_info_fname = fullfile(audio_dir, ['juv_call_info_' params.bat_str '_' params.exp_date '.mat']);
-else
-    call_info_fname = fullfile(audio_dir, ['call_info_' params.bat_str '_' params.exp_date '.mat']);
-end
 if exist(call_info_fname,'file')
     display(['updating existing file ' call_info_fname]);
     choice = questdlg('Overwrite existing juvenile call file?','Overwrite?','Yes','No','Update','No');
@@ -785,10 +832,10 @@ if exist(call_info_fname,'file')
             call_info = guidata(params.hFig);
             save(call_info_fname,'call_info');
         case 'Update'
-            juv_call_info_update = guidata(params.hFig);
+            call_info_update = guidata(params.hFig);
             s = load(call_info_fname);
             call_info = s.call_info;
-            call_info = updateData(call_info,juv_call_info_update);
+            call_info = updateData(call_info,call_info_update);
             save(call_info_fname,'call_info');
     end
 else
@@ -799,17 +846,15 @@ end
 
 end
 
-function call_info = updateData(call_info,juv_call_info_update)
+function call_info = updateData(call_info,call_info_update)
 
 nFiles = length(call_info);
-nUpdates = length(juv_call_info_update);
+nUpdates = length(call_info_update);
 
 for up = 1:nUpdates
-    idx = strcmp(juv_call_info_update(up).AudioFile, {call_info.AudioFile});
-    call_info(idx) = juv_call_info_update(up);
+    idx = strcmp(call_info_update(up).AudioFile, {call_info.AudioFile});
+    call_info(idx) = call_info_update(up);
 end
-
-
 
 end
 
@@ -867,9 +912,10 @@ end
 function plot_frame_audioplayer_callback(player,~,videoData,audioAxis,imObj)
 
 for v = 1:length(videoData)
-    frame_k = min(size(videoData{v},3),player.UserData);
+    frame_k = min(size(videoData{v},ndims(videoData{v})),player.UserData);
     if ~isempty(videoData{v})
-        set(imObj{v}, 'CData', videoData{v}(:,:,frame_k));
+        vidIdxs = repmat({':'},1,ndims(videoData{v})-1);
+        set(imObj{v}, 'CData', videoData{v}(vidIdxs{:},frame_k));
     end
 end
 player.UserData = frame_k + 1;
