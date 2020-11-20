@@ -949,9 +949,10 @@ end
 function plot_frame_step(frame_k,videoData,audioAxis,imObj,current_audio_sample)
 
 for v = 1:length(videoData)
-    frame_k = min(size(videoData{v},3),frame_k);
+    frame_k = min(size(videoData{v},ndims(videoData{v})),frame_k);
     if ~isempty(videoData{v})
-        set(imObj{v}, 'CData', videoData{v}(:,:,frame_k));
+        vidIdxs = repmat({':'},1,ndims(videoData{v})-1);
+        set(imObj{v}, 'CData', videoData{v}(vidIdxs{:},frame_k));
     end
 end
 % plot the new marker
