@@ -37,7 +37,7 @@ switch exp_type
                 cam_dir_strs = {'video',sessionType,'infrared'};
                 overlay_dir_strs = {'video',sessionType,'color'};
                 overlay_cam_strs = {'color'};
-                overlayObjs = load('IRtoColor_Regist_obejcts','Rfixed','t');
+                overlayObjs = load('IRtoColor_Regist_fast','Rfixed','t');
                 useColor = true;
                 event_pos_fname_str = 'cut_call_data_social';
         end
@@ -343,7 +343,7 @@ try
     audio_dir_event_pos = fullfile(event_pos_data(call_k).fName);
     exp_dir_split = strsplit(params.exp_dir,filesep);
     audio_fname_split = strsplit(audio_dir_event_pos,filesep);
-    dateIdx = find(cellfun(@(x,y) strcmp(x,y),audio_fname_split(1:length(exp_dir_split)),exp_dir_split),1,'last');
+    dateIdx = find(ismember(audio_fname_split,exp_dir_split),1,'last');
     audio_fname = fullfile(params.exp_dir,audio_fname_split{dateIdx+1:end});
     audioDir = fileparts(audio_fname);
     
@@ -407,7 +407,7 @@ callOffset = getappdata(params.hFig,'callOffset');
 frame_ts_info_fname = fullfile(frame_ts_info.videoFNames{frame_ts_info.fileIdx(first_call_frame_idx)});
 exp_dir_split = strsplit(params.exp_dir,filesep);
 frame_ts_info_fname_split = strsplit(frame_ts_info_fname,filesep);
-dateIdx = find(cellfun(@(x,y) strcmp(x,y),frame_ts_info_fname_split(1:length(exp_dir_split)),exp_dir_split),1,'last');
+dateIdx = find(ismember(frame_ts_info_fname_split,exp_dir_split),1,'last');
 video_fName = fullfile(params.exp_dir,frame_ts_info_fname_split{dateIdx+1:end});
 
 vidObj = VideoReader(video_fName);
