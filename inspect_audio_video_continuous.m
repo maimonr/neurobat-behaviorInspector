@@ -1,8 +1,8 @@
 function inspect_audio_video_continuous(exp_dir,varargin)
 
-pnames = {'exp_type','bat_str','event_pos_data','onlyBouts','sessionType'};
-dflts  = {'adult','bat',[],true,'communication'};
-[exp_type,bat_str,event_pos_data,only_bout_flag,sessionType] = internal.stats.parseArgs(pnames,dflts,varargin{:});
+pnames = {'exp_type','bat_str','event_pos_data','onlyBouts','sessionType','bout_separation_length'};
+dflts  = {'adult','bat',[],true,'communication',3};
+[exp_type,bat_str,event_pos_data,only_bout_flag,sessionType,bout_separation_length] = internal.stats.parseArgs(pnames,dflts,varargin{:});
 
 h = figure;
 call_k = 1;
@@ -119,10 +119,9 @@ else
 end
 
 if only_bout_flag
-    bout_separation_length = 1e3;
     callPos = vertcat(event_pos_data.corrected_eventpos);
     ICI = [Inf; callPos(2:end,1) - callPos(1:end-1,2)];
-    callIdx = ICI > bout_separation_length;
+    callIdx = ICI > 1e3*bout_separation_length;
     event_pos_data = event_pos_data(callIdx);
 end
 
