@@ -29,17 +29,19 @@ switch exp_type
         end
         event_pos_fname_str = 'cut_call_data';
     case 'adult_social'
+        nVideo = 1;
+        useOverlay = true;
+        camStrs = {'infrared'};
+        cam_dir_strs = {'video',sessionType,'infrared'};
+        overlay_dir_strs = {'video',sessionType,'color'};
+        overlay_cam_strs = {'color'};
+        overlayObjs = load('IRtoColor_Regist_fast','Rfixed','t');
+        useColor = true;
         switch sessionType
-            case 'social' % vocal session not implemented yet
-                nVideo = 1;
-                useOverlay = true;
-                camStrs = {'infrared'};
-                cam_dir_strs = {'video',sessionType,'infrared'};
-                overlay_dir_strs = {'video',sessionType,'color'};
-                overlay_cam_strs = {'color'};
-                overlayObjs = load('IRtoColor_Regist_fast','Rfixed','t');
-                useColor = true;
+            case 'social'
                 event_pos_fname_str = 'cut_call_data_social';
+            case 'vocal'
+                event_pos_fname_str = 'cut_call_data';
         end
 end
 
@@ -168,7 +170,7 @@ switch exp_type
         call_info_fname = fullfile(bhvDir, ['call_info_' params.bat_str '_' params.exp_date '.mat']);
         call_info = struct('eventpos',num2cell(vertcat(event_pos_data.file_event_pos),2),...
             'corrected_eventpos',num2cell(vertcat(event_pos_data.corrected_eventpos),2),...
-            'batsInvolved',[],'behaviors',repmat({cell(1,nBehaviors)},length(event_pos_data),1),...
+            'batsInvolved',[],'instigator',[],'behaviors',repmat({cell(1,nBehaviors)},length(event_pos_data),1),...
             'behaviorTime',repmat({cell(1,nBehaviors)},length(event_pos_data),1));
         params.timestamps_string = 'nlg';
         
@@ -512,25 +514,27 @@ uicontrol(controlPanel,'unit','normalized','style','pushbutton','string','Save V
 
 
 vocalizationPanel = uipanel(params.hFig,'unit','normalized','Title','Vocalization Panel',...
-    'Position',[0.02 0.5 0.076 0.35],'Tag','vocalization');
+    'Position',[0.02 0.45 0.076 0.45],'Tag','vocalization');
 
-involvedString = call_info(call_k).batsInvolved;
+involvedValue = get_bats_involved(call_info,call_k,params,'batsInvolved');
 
-if ~isempty(involvedString)
-    if length(involvedString) == 1
-        involvedString = [involvedString{:}];
-    end
-    involvedValue = find(ismember([{''} params.bat_IDs],involvedString));
-else
-    involvedValue = 1;
-end
-
-if isempty(involvedValue)
-    involvedValue = 1;
-end
 uicontrol(vocalizationPanel,'unit','normalized','style','listbox','string',...
-        [{''} params.bat_IDs],'position',[0.01 0.4 0.9 0.5],'value',involvedValue,...
-        'Min',0,'Max',length(params.bat_IDs),'callback',{@updateCallInfoCallback,params,call_k});
+        [{''} params.bat_IDs],'position',[0.01 0.55 0.9 0.4],'value',involvedValue,...
+        'Min',0,'Max',length(params.bat_IDs),'callback',{@updateCallInfoCallback,params,call_k},...
+        'Tag','batsInvolved');
+
+uicontrol(vocalizationPanel,'unit','normalized','style','text','string',...
+    'Bats Involved','position',[0.01 0.95 0.9 0.05]);
+    
+instigatorValue = get_bats_involved(call_info,call_k,params,'instigator');
+
+uicontrol(vocalizationPanel,'unit','normalized','style','listbox','string',...
+        [{''} params.bat_IDs],'position',[0.01 0.05 0.9 0.4],'value',instigatorValue,...
+        'Min',0,'Max',length(params.bat_IDs),'callback',{@updateCallInfoCallback,params,call_k},...
+        'Tag','instigator');
+
+uicontrol(vocalizationPanel,'unit','normalized','style','text','string',...
+    'Instigator','position',[0.01 0.45 0.9 0.05]);
 
 if ~isnan(event_pos_data(call_k).batNum)
     voc_bat_ID = event_pos_data(call_k).batNum;
@@ -539,14 +543,14 @@ else
 end
     
 uicontrol(vocalizationPanel,'unit','normalized','style','text','string',...
-    ['Vocalizer: ' voc_bat_ID],'position',[0.01 0.2 0.9 0.2]);
+    ['Vocalizer: ' voc_bat_ID],'position',[0.01 0 0.9 0.05]);
 
 callNumbers = strsplit(num2str(1:length(event_pos_data)));
 eventpos = num2cell(round(params.eventpos),1);
 
 uicontrol(params.hFig,'unit','normalized','style','popupmenu','string',...
     cellfun(@(x,y) [x ': ' num2str(mean(y)) ' min'],callNumbers,eventpos,'UniformOutput',0),...
-    'position',[0.02,0.4,0.05,0.05],'Tag','loadNextAudioFile',...
+    'position',[0.02,0.35,0.05,0.05],'Tag','loadNextAudioFile',...
     'value',call_k,'callback',...
     {@nextVideoCallback,params,audio_dir,event_pos_data,frame_ts_info,call_k,allBehaviorList});
 
@@ -645,6 +649,25 @@ end
 
 end
 
+function involvedValue = get_bats_involved(call_info,call_k,params,involvedType)
+
+involvedString = call_info(call_k).(involvedType);
+
+if ~isempty(involvedString)
+    if length(involvedString) == 1
+        involvedString = [involvedString{:}];
+    end
+    involvedValue = find(ismember([{''} params.bat_IDs],involvedString));
+else
+    involvedValue = 1;
+end
+
+if isempty(involvedValue)
+    involvedValue = 1;
+end
+
+end
+
 function playCallback(hObject,~,params)
 
 a = getappdata(params.hFig,'a');
@@ -719,6 +742,7 @@ end
 
 function nextVideoCallback(hObject,~,params,audio_dir,event_pos_data,frame_ts_info,call_k,allBehaviorList)
 
+dbclear all
 switch hObject.Tag
     case 'loadNextFile'
         call_k = call_k + 1;
@@ -752,14 +776,14 @@ call_info = guidata(params.hFig);
 switch hObject.Parent.Tag
     
     case 'vocalization'
-        
+        involvedType = hObject.Tag;
         if length(hObject.Value) > 1
-            call_info(call_k).batsInvolved = hObject.String(hObject.Value);
+            call_info(call_k).(involvedType) = hObject.String(hObject.Value);
         else
             if strcmp(hObject.String(hObject.Value),'')
-                call_info(call_k).batsInvolved = [];
+                call_info(call_k).(involvedType) = [];
             else
-                call_info(call_k).batsInvolved = {hObject.String(hObject.Value)};
+                call_info(call_k).(involvedType) = {hObject.String(hObject.Value)};
             end
         end
         
