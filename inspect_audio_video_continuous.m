@@ -231,7 +231,17 @@ plot(params.hCalls,mean(params.eventpos(:,call_k)),1.1,'vk','MarkerFaceColor','k
 
 guidata(params.hFig,call_info);
 
-[audioData,videoData,params] = loadNextCall(event_pos_data,frame_ts_info,params);
+videoData = [];
+
+while true
+    [audioData,videoData,params] = loadNextCall(event_pos_data,frame_ts_info,params);
+    if isempty(videoData)
+        call_k = call_k + 1;
+        setappdata(params.hFig,'call_k',call_k)
+    else
+        break
+    end
+end
 
 initMovie(videoData,audioData,params,audio_dir,event_pos_data,frame_ts_info,allBehaviorList);
 
@@ -385,12 +395,10 @@ try
     audioData = base_audio_data(requested_audio_samples);
 catch err
     disp(err)
-    keyboard
     success = 0;
     
     audioData = [];
     videoData = [];
-    params = [];
     close(hWait);
     return
 end
